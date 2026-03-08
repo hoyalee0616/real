@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "RTER Autofill Bridge",
+  "version": "1.0.0",
+  "description": "rter.kr 매물등록 자동입력 브릿지",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://rter.kr/*",
+        "https://www.rter.kr/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

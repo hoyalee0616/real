@@ -1,0 +1,16 @@
+{
+  "name": "rates-ranking-dashboard",
+  "version": "1.0.0",
+  "description": "Deposit and savings rate ranking dashboard with daily batch updates",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "restart": "bash ./scripts/restart.sh"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}

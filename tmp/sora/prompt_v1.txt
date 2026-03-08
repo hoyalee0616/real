@@ -1,0 +1,13 @@
+Use case: looping background clip for social post
+Primary request: a stylized animated man dancing continuously in a seamless loop
+Scene/background: cozy pink room with desk, indoor plants, and warm playful atmosphere
+Subject: one fictional adult male character in a gray suit with headphones, cartoon line-art style
+Action: simple two-step dance cycle repeating smoothly with consistent body rhythm
+Camera: locked medium-wide shot, eye-level, no zoom, no pan
+Lighting/mood: soft even indoor light, cheerful and relaxed
+Color palette: pink, coral, mustard yellow, muted green, charcoal outlines
+Style/format: 2D hand-drawn animation look, clean outlines, flat colors
+Timing/beats: 4-second clip; beats 1-2 step left, beats 3-4 step right; end pose must match first frame exactly
+Audio: no audio
+Constraints: seamless loop is highest priority; keep character centered; no scene changes; no extra people; suitable for all ages
+Avoid: flicker, jitter, limb warping, camera movement, frame-to-frame background drift, text, logos

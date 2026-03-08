@@ -1,0 +1,42 @@
+{
+  "items": [
+    {
+      "id": "sample-deposit-1",
+      "type": "deposit",
+      "institution": "국민은행(샘플)",
+      "institutionUrl": "https://www.kbstar.com",
+      "productName": "KB 정기예금",
+      "productUrl": "https://finlife.fss.or.kr",
+      "baseRate": 3.4,
+      "maxRate": 3.7,
+      "joinPeriodMonths": 12,
+      "signupMethod": "both",
+      "note": "샘플 데이터",
+      "updatedAt": "2026-03-06T05:37:24.071Z"
+    },
+    {
+      "id": "sample-savings-1",
+      "type": "savings",
+      "institution": "신한은행(샘플)",
+      "institutionUrl": "https://www.shinhan.com",
+      "productName": "신한 적금",
+      "productUrl": "https://finlife.fss.or.kr",
+      "baseRate": 3.8,
+      "maxRate": 5,
+      "joinPeriodMonths": 12,
+      "signupMethod": "online",
+      "note": "샘플 데이터",
+      "updatedAt": "2026-03-06T05:37:24.071Z"
+    }
+  ],
+  "meta": {
+    "source": "sample",
+    "providerName": "sample",
+    "lastRunAt": "2026-03-06T05:37:24.072Z",
+    "nextRunAt": "2026-03-04T21:05:00.000Z",
+    "lastDurationMs": 1,
+    "runCount": 138,
+    "running": false,
+    "lastError": null
+  }
+}

@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>이미지/PDF 툴</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <p class="eyebrow">Address Search • Building Info</p>
+        <h1>건물주소 조회</h1>
+        <p id="hero-sub">주소 또는 아파트명을 검색하면 건축물 정보와 주변시설 정보를 조회합니다.</p>
+      </header>
+
+      <section class="mode-tabs" role="tablist" aria-label="작업 메뉴">
+        <button class="mode-tab" id="mode-building" type="button">주소/건물 조회</button>
+        <button class="mode-tab active" id="mode-compress" type="button">용량 줄이기</button>
+        <button class="mode-tab" id="mode-transparent" type="button">배경 투명화</button>
+        <button class="mode-tab" id="mode-upscale" type="button">해상도 2배</button>
+        <button class="mode-tab" id="mode-pdf" type="button">PDF 텍스트 넣기</button>
+      </section>
+
+      <section class="panel uploader" id="building-panel" hidden>
+        <div class="controls building-search-wrap">
+          <label class="field building-search-field">
+            <span>주소/아파트명 검색</span>
+            <input id="building-query" type="text" placeholder="예: 대명앙뜨레빌 또는 경기도 부천시 원미구 지봉로45번길 16-7" />
+            <div id="building-suggest" class="building-suggest" hidden></div>
+          </label>
+          <button id="building-search-btn" class="btn btn-strong" type="button">건물/주변시설 조회</button>
+        </div>
+        <p id="building-status" class="building-status" aria-live="polite"></p>
+
+        <article id="building-result" class="building-result" hidden>
+          <header class="building-head">
+            <h2 id="building-title">-</h2>
+            <p id="building-subtitle">-</p>
+            <a
+              id="building-issue-link"
+              class="btn btn-strong"
+              href="https://www.gov.kr/mw/AA020InfoCappView.do?CappBizCD=15000000098"
+              target="_blank"
+              rel="noreferrer"
+            >건축물대장/현황도 발급</a>
+          </header>
+
+          <section class="building-stats">
+            <article><p>주용도</p><strong id="building-use">-</strong></article>
+            <article><p>사용승인일</p><strong id="building-approval-date">-</strong></article>
+            <article><p>총 층수</p><strong id="building-floor-summary">-</strong></article>
+            <article><p>총 주차대수</p><strong id="building-parking-count">-</strong></article>
+          </section>
+
+          <nav class="building-tabs" role="tablist" aria-label="건물 상세">
+            <button class="building-tab active" type="button" data-building-tab="overview">기본개요</button>
+            <button class="building-tab" type="button" data-building-tab="dongho">동/호정보</button>
+            <button class="building-tab" type="button" data-building-tab="transit">교통/도로</button>
+            <button class="building-tab" type="button" data-building-tab="description">매물설명</button>
+            <button class="building-tab" type="button" data-building-tab="map">지도</button>
+          </nav>
+
+          <section class="building-tab-panel active" id="building-tab-overview">
+            <table class="building-table">
+              <tbody id="building-overview-body"></tbody>
+            </table>
+          </section>
+
+          <section class="building-tab-panel" id="building-tab-dongho">
+            <div id="building-dongho-summary" class="building-dongho-summary"></div>
+            <div class="building-dongho-grid">
+              <article>
+                <h3>동 정보</h3>
+                <div id="building-dong-list" class="building-simple-list"></div>
+              </article>
+              <article>
+                <h3>호 정보</h3>
+                <div id="building-ho-list" class="building-simple-list"></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="building-tab-panel" id="building-tab-transit">
+            <div id="building-transit-summary" class="building-transit-summary"></div>
+          </section>
+
+          <section class="building-tab-panel" id="building-tab-description">
+            <div class="listing-desc-head">
+              <h3>매물 설명</h3>
+              <button id="listing-desc-copy-all-btn" class="btn btn-strong" type="button">전체 복사</button>
+            </div>
+            <div class="listing-desc-grid">
+              <article class="listing-desc-card">
+                <div class="listing-desc-card-head">
+                  <h4>교통</h4>
+                  <div class="listing-desc-actions">
+                    <button class="btn-mini" type="button" data-refresh-desc="transport">다시 조회</button>
+                    <button class="btn-mini" type="button" data-copy-target="listing-desc-transport">복사</button>
+                  </div>
+                </div>
+                <textarea id="listing-desc-transport" rows="7" placeholder="- 항목을 입력하세요"></textarea>
+              </article>
+              <article class="listing-desc-card">
+                <div class="listing-desc-card-head">
+                  <h4>교육환경</h4>
+                  <div class="listing-desc-actions">
+                    <button class="btn-mini" type="button" data-refresh-desc="education">다시 조회</button>
+                    <button class="btn-mini" type="button" data-copy-target="listing-desc-education">복사</button>
+                  </div>
+                </div>
+                <textarea id="listing-desc-education" rows="6" placeholder="- 항목을 입력하세요"></textarea>
+              </article>
+              <article class="listing-desc-card">
+                <div class="listing-desc-card-head">
+                  <h4>자연환경/편의시설</h4>
+                  <div class="listing-desc-actions">
+                    <button class="btn-mini" type="button" data-refresh-desc="amenity">다시 조회</button>
+                    <button class="btn-mini" type="button" data-copy-target="listing-desc-amenity">복사</button>
+                  </div>
+                </div>
+                <textarea id="listing-desc-amenity" rows="7" placeholder="- 항목을 입력하세요"></textarea>
+              </article>
+            </div>
+          </section>
+
+          <section class="building-tab-panel" id="building-tab-map">
+            <div id="building-map" class="building-map" aria-label="위치 지도"></div>
+          </section>
+        </article>
+      </section>
+
+      <section class="panel uploader" id="image-uploader">
+        <label for="file-input" class="dropzone" id="dropzone">
+          <input id="file-input" type="file" accept="image/*" multiple />
+          <strong>이미지를 업로드하세요 (여러 장 가능)</strong>
+          <span>클릭 또는 드래그 앤 드롭</span>
+        </label>
+
+        <div class="controls" id="compress-controls">
+          <label class="field">
+            <span>출력 포맷</span>
+            <select id="compress-format">
+              <option value="auto" selected>자동 (권장)</option>
+              <option value="image/webp">WEBP</option>
+              <option value="image/jpeg">JPEG</option>
+              <option value="image/png">PNG</option>
+            </select>
+          </label>
+          <button id="compress-btn" class="btn" type="button" disabled>2MB 미만으로 압축</button>
+        </div>
+
+        <div class="controls" id="transparent-controls" hidden>
+          <label class="field">
+            <span>출력 포맷</span>
+            <select id="transparent-format">
+              <option value="image/png" selected>PNG (투명 권장)</option>
+              <option value="image/webp">WEBP</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>제거 방식</span>
+            <select id="transparent-method">
+              <option value="ai" selected>AI 배경 제거 (권장)</option>
+              <option value="color">기준색 제거 (단색 배경)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>기준색 모드</span>
+            <select id="transparent-mode">
+              <option value="auto" selected>자동 (모서리 추정)</option>
+              <option value="manual">직접 선택</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>배경 기준색</span>
+            <input id="transparent-color" type="color" value="#ffffff" />
+          </label>
+          <label class="field">
+            <span>투명화 강도</span>
+            <input id="transparent-tolerance" type="range" min="10" max="140" step="1" value="45" />
+          </label>
+          <button id="transparent-btn" class="btn" type="button" disabled>배경 투명화</button>
+        </div>
+
+        <div class="controls" id="upscale-controls" hidden>
+          <label class="field">
+            <span>업스케일 방식</span>
+            <select id="upscale-method">
+              <option value="ai" selected>AI 업스케일 (권장)</option>
+              <option value="sharp">고급 선명화 업스케일</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>선명도 강화</span>
+            <input id="upscale-sharpen" type="range" min="0" max="2" step="0.05" value="1.2" />
+          </label>
+          <label class="field">
+            <span>비네팅</span>
+            <input id="upscale-vignette" type="range" min="0" max="0.6" step="0.02" value="0.18" />
+          </label>
+          <label class="field">
+            <span>출력 포맷</span>
+            <select id="upscale-format">
+              <option value="auto" selected>자동 (권장)</option>
+              <option value="image/png">PNG</option>
+              <option value="image/webp">WEBP</option>
+              <option value="image/jpeg">JPEG</option>
+            </select>
+          </label>
+          <button id="upscale-btn" class="btn" type="button" disabled>해상도 2배로 변환</button>
+        </div>
+      </section>
+
+      <section class="panel uploader" id="pdf-uploader" hidden>
+        <div class="controls pdf-grid">
+          <label class="field">
+            <span>PDF 파일</span>
+            <input id="pdf-file" type="file" accept="application/pdf,.pdf" />
+          </label>
+          <label class="field small-field">
+            <span>페이지 번호</span>
+            <input id="pdf-page" type="number" min="1" step="1" value="1" />
+          </label>
+          <label class="field small-field">
+            <span>X 좌표</span>
+            <input id="pdf-x" type="number" step="1" value="60" />
+          </label>
+          <label class="field small-field">
+            <span>Y 좌표</span>
+            <input id="pdf-y" type="number" step="1" value="60" />
+          </label>
+          <label class="field small-field">
+            <span>글자 크기</span>
+            <input id="pdf-font-size" type="number" min="8" step="1" value="18" />
+          </label>
+          <label class="field field-wide">
+            <span>텍스트 입력</span>
+            <textarea id="pdf-text" rows="3" placeholder="PDF에 넣을 내용을 입력하세요"></textarea>
+          </label>
+          <button id="pdf-add-btn" class="btn" type="button" disabled>텍스트 박스 추가</button>
+          <button id="pdf-sign-btn" class="btn btn-strong" type="button" disabled>PDF에 전체 적용</button>
+        </div>
+        <div class="pdf-items" id="pdf-items"></div>
+        <p class="hint">미리보기에서 드래그로 영역을 선택하면 좌표/글자크기가 자동 입력됩니다. 좌표 기준은 PDF 왼쪽 아래(0,0)입니다.</p>
+        <div class="pdf-preview-wrap">
+          <canvas id="pdf-canvas"></canvas>
+          <div id="pdf-selection" hidden></div>
+        </div>
+      </section>
+
+      <section id="message" class="message">이미지를 선택하면 압축 준비가 됩니다.</section>
+      <section id="image-batch-results" class="pdf-items"></section>
+
+      <section class="panel result" id="result" hidden>
+        <div class="stats">
+          <article>
+            <h2>원본</h2>
+            <p id="original-meta">-</p>
+          </article>
+          <article>
+            <h2>결과</h2>
+            <p id="compressed-meta">-</p>
+          </article>
+          <article>
+            <h2>비율</h2>
+            <p id="saved-meta">-</p>
+          </article>
+        </div>
+
+        <div class="preview-wrap" id="preview-wrap">
+          <img id="preview" alt="처리 이미지 미리보기" />
+        </div>
+        <div class="compare-wrap" id="compare-wrap" hidden>
+          <div class="compare-grid">
+            <div class="compare-stage" id="compare-stage">
+              <img id="compare-before" alt="업스케일 전" />
+              <div class="compare-after-clip" id="compare-after-clip">
+                <img id="compare-after" alt="업스케일 후" />
+              </div>
+              <div class="compare-divider" id="compare-divider"></div>
+              <button class="compare-handle" id="compare-handle" type="button" aria-label="비교 위치 조정">
+                &lt;&gt;
+              </button>
+              <span class="compare-meta compare-meta-left" id="compare-before-meta">전 0x0</span>
+              <span class="compare-meta compare-meta-right" id="compare-after-meta">후 0x0</span>
+            </div>
+            <aside class="compare-side">
+              <h3>업스케일</h3>
+              <p id="compare-method-label">AI 업스케일</p>
+              <p id="compare-size-label">0x0 → 0x0</p>
+            </aside>
+          </div>
+          <input id="compare-slider" type="range" min="0" max="100" value="50" hidden />
+        </div>
+
+        <a id="download-link" class="btn btn-strong" download>결과 파일 다운로드</a>
+      </section>
+    </main>
+
+    <section id="listing-modal" class="listing-modal" hidden>
+      <div class="listing-modal-backdrop" data-listing-close></div>
+      <div class="listing-modal-panel" role="dialog" aria-modal="true" aria-labelledby="listing-modal-title">
+        <header class="listing-modal-head">
+          <h2 id="listing-modal-title">매물 등록</h2>
+          <button id="listing-modal-close" type="button" class="listing-modal-close" aria-label="닫기">×</button>
+        </header>
+        <div class="listing-modal-body">
+          <p id="listing-modal-unit" class="listing-unit-summary">-</p>
+
+          <div class="listing-form-grid">
+            <label class="field">
+              <span>매물 종류</span>
+              <div class="listing-chip-group" data-chip-group="propertyType">
+                <button type="button" class="listing-chip active">아파트</button>
+                <button type="button" class="listing-chip">빌라(투룸 이상)</button>
+                <button type="button" class="listing-chip">오피스텔</button>
+                <button type="button" class="listing-chip">주택</button>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>거래 유형</span>
+              <div class="listing-chip-group" data-chip-group="dealType">
+                <button type="button" class="listing-chip">매매</button>
+                <button type="button" class="listing-chip active">전세</button>
+                <button type="button" class="listing-chip">월세</button>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>가격(만원)</span>
+              <input id="listing-price" type="number" placeholder="예: 15000" />
+            </label>
+
+            <div class="listing-two-cols">
+              <label class="field">
+                <span>방 개수</span>
+                <input id="listing-room-count" type="number" placeholder="예: 3" />
+              </label>
+              <label class="field">
+                <span>욕실 개수</span>
+                <input id="listing-bath-count" type="number" placeholder="예: 1" />
+              </label>
+            </div>
+
+            <label class="field">
+              <span>관리비(만원)</span>
+              <input id="listing-maintenance-fee" type="number" placeholder="예: 8" />
+            </label>
+
+            <label class="field">
+              <span>입주 가능일</span>
+              <input id="listing-move-in-date" type="text" placeholder="비우면 즉시 입주 / YYYY/MM/DD" />
+            </label>
+
+            <label class="field">
+              <span>매물 방향</span>
+              <div class="listing-chip-group" data-chip-group="direction">
+                <button type="button" class="listing-chip">남향</button>
+                <button type="button" class="listing-chip">동향</button>
+                <button type="button" class="listing-chip">서향</button>
+                <button type="button" class="listing-chip">북향</button>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>주차</span>
+              <div class="listing-chip-group" data-chip-group="parking">
+                <button type="button" class="listing-chip active">가능</button>
+                <button type="button" class="listing-chip">불가능</button>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>추가 설명</span>
+              <textarea id="listing-description" rows="5" placeholder="추가로 알릴 내용을 입력하세요..."></textarea>
+            </label>
+          </div>
+        </div>
+        <footer class="listing-modal-foot">
+          <button id="listing-cancel-btn" class="btn" type="button">취소</button>
+          <button id="listing-save-btn" class="btn btn-strong" type="button">등록</button>
+        </footer>
+      </div>
+    </section>
+
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="/main.js"></script>
+  </body>
+</html>

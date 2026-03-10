@@ -607,6 +607,49 @@ body {
   font-size: 0.9rem;
 }
 
+.building-ho-table-wrap {
+  border: 1px solid #dce2ea;
+  border-radius: 8px;
+  overflow: auto;
+  margin-bottom: 8px;
+  max-height: 240px;
+}
+
+.building-unit-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 420px;
+}
+
+.building-unit-table th,
+.building-unit-table td {
+  border-bottom: 1px solid #e6ebf2;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.building-unit-table th {
+  position: sticky;
+  top: 0;
+  background: #f3f7ff;
+  color: #40516a;
+  z-index: 1;
+}
+
+.building-ho-table-empty {
+  color: #8a95a3;
+  text-align: center;
+}
+
+.building-registry-note {
+  margin-top: 8px;
+  color: #5f6875;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
 .building-dong-item {
   width: 100%;
   text-align: left;

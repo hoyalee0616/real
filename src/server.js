@@ -48,12 +48,17 @@ function resolveLocalHousingCsvPath() {
     .filter((name) => name.toLowerCase().endsWith('.csv'))
     .map((name) => path.join(logDir, name));
   if (!files.length) return '';
-  const preferred = files.find((file) => file.includes('주택 공시가격 정보'));
+  const targets = ['주택공시가격정보', '주택공시가격정보'].map((v) => normalizeFilenameToken(v));
+  const preferred = files.find((file) => {
+    const base = normalizeFilenameToken(path.basename(file));
+    return targets.some((t) => base.includes(t));
+  });
   return preferred || files[0];
 }
 
 const LOCAL_HOUSING_CSV_PATH = resolveLocalHousingCsvPath();
 const LOCAL_CSV_CACHE = new Map();
+const LOCAL_EXPOS_AREA_CACHE = new Map();
 const LOCAL_HOUSING_SQLITE_PATH = String(process.env.LOCAL_HOUSING_SQLITE_PATH || '')
   .trim() || path.join(__dirname, '..', 'log', 'housing_prices_2025.sqlite');
 const LOCAL_CSV_SQLITE_STATE = {
@@ -63,6 +68,61 @@ const LOCAL_CSV_SQLITE_STATE = {
 };
 const LH_SUPPLY_CACHE = new Map();
 const COMPLEX_SUPPLY_HINT_CACHE = new Map();
+const SUPPLY_COMMON_ETC_TOKENS = ['계단실', '승강기', '벽체', '외벽'];
+const MAIN_BUILDING_TOKEN = '주건축물';
+
+function normalizeFilenameToken(value) {
+  return String(value || '')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[()\-_.]/g, '');
+}
+
+function resolveLocalExposAreaCsvPath() {
+  const fromEnv = String(process.env.LOCAL_EXPOS_AREA_CSV_PATH || '').trim();
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+  const logDir = path.join(__dirname, '..', 'log');
+  if (!fs.existsSync(logDir)) return '';
+  const files = fs.readdirSync(logDir)
+    .filter((name) => name.toLowerCase().endsWith('.csv'))
+    .map((name) => path.join(logDir, name));
+  if (!files.length) return '';
+  const targets = ['전유공용면적', '전유공용면적'].map((v) => normalizeFilenameToken(v));
+  const byName = files.find((file) => {
+    const base = normalizeFilenameToken(path.basename(file));
+    return targets.some((t) => base.includes(t));
+  });
+  return byName || '';
+}
+
+function resolveLocalExposAreaJsonPath() {
+  const fromEnv = String(process.env.LOCAL_EXPOS_AREA_JSON_PATH || '').trim();
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+  const logDir = path.join(__dirname, '..', 'log');
+  if (!fs.existsSync(logDir)) return '';
+  const files = fs.readdirSync(logDir)
+    .filter((name) => name.toLowerCase().endsWith('.json'))
+    .map((name) => path.join(logDir, name));
+  if (!files.length) return '';
+  const targets = ['전유공용면적', '전유공용면적'].map((v) => normalizeFilenameToken(v));
+  const matched = files.filter((file) => {
+    const base = normalizeFilenameToken(path.basename(file));
+    return targets.some((t) => base.includes(t));
+  });
+  if (!matched.length) return '';
+  matched.sort((a, b) => (getFileMtimeMs(b) - getFileMtimeMs(a)));
+  return matched[0];
+}
+
+const LOCAL_EXPOS_AREA_CSV_PATH = resolveLocalExposAreaCsvPath();
+const LOCAL_EXPOS_AREA_JSON_PATH = resolveLocalExposAreaJsonPath();
+let LOCAL_EXPOS_AREA_JSON_ROWS = null;
+const LOCAL_EXPOS_AREA_JSON_INDEX = {
+  ready: false,
+  byParcel: new Map(),
+  lastError: ''
+};
 
 app.get('/api/client-config', (_req, res) => {
   res.json({
@@ -79,6 +139,12 @@ function toNumber(value) {
 function toInteger(value) {
   const n = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(n) ? n : null;
+}
+
+function trunc2(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n * 100) / 100;
 }
 
 function toNumberLoose(value) {
@@ -277,14 +343,30 @@ async function ensureLocalCsvSqliteReady() {
     return { ok: false, reason: '로컬 CSV 파일이 없습니다.' };
   }
   if (LOCAL_CSV_SQLITE_STATE.ready) return { ok: true, reason: '' };
-  if (LOCAL_CSV_SQLITE_STATE.building) return LOCAL_CSV_SQLITE_STATE.building;
+  if (LOCAL_CSV_SQLITE_STATE.building) {
+    return { ok: false, reason: 'sqlite 인덱스 구축 중입니다. 임시로 CSV 직접 조회를 사용합니다.' };
+  }
 
   LOCAL_CSV_SQLITE_STATE.building = (async () => {
     try {
       await execFileAsync('sqlite3', ['--version']);
       const csvMtime = getFileMtimeMs(LOCAL_HOUSING_CSV_PATH);
       const dbMtime = getFileMtimeMs(LOCAL_HOUSING_SQLITE_PATH);
-      const needBuild = !fs.existsSync(LOCAL_HOUSING_SQLITE_PATH) || dbMtime < csvMtime;
+      let needBuild = !fs.existsSync(LOCAL_HOUSING_SQLITE_PATH) || dbMtime < csvMtime;
+      if (!needBuild && fs.existsSync(LOCAL_HOUSING_SQLITE_PATH)) {
+        try {
+          const sanitySql = [
+            'SELECT COUNT(*)',
+            'FROM apt_prices',
+            "WHERE length(legal_code)=10"
+          ].join(' ');
+          const sanity = await execFileAsync('sqlite3', ['-noheader', LOCAL_HOUSING_SQLITE_PATH, sanitySql]);
+          const count = Number.parseInt(String(sanity.stdout || '').trim(), 10) || 0;
+          if (count <= 0) needBuild = true;
+        } catch (_error) {
+          needBuild = true;
+        }
+      }
       if (needBuild) {
         await buildLocalCsvSqliteDb();
       }
@@ -300,21 +382,21 @@ async function ensureLocalCsvSqliteReady() {
     }
   })();
 
-  return LOCAL_CSV_SQLITE_STATE.building;
+  return { ok: false, reason: 'sqlite 인덱스 구축 시작. 임시로 CSV 직접 조회를 사용합니다.' };
 }
 
 async function queryLocalCsvSqliteRows(parcel) {
   const legalCode = `${String(parcel.sigunguCd || '')}${String(parcel.bjdongCd || '')}`;
-  const bun = String(Number.parseInt(String(parcel.bun || '0'), 10) || 0);
-  const ji = String(Number.parseInt(String(parcel.ji || '0'), 10) || 0);
+  const bunNum = Number.parseInt(String(parcel.bun || '0'), 10) || 0;
+  const jiNum = Number.parseInt(String(parcel.ji || '0'), 10) || 0;
   const plat = String(parcel.platGbCd || '0');
   const sql = [
-    'SELECT dong_name, ho_name, area, official_price',
+    'SELECT dong_name, ho_name, area, official_price, pnu',
     'FROM apt_prices',
     `WHERE legal_code=${sqlQuote(legalCode)}`,
     `AND special_code=${sqlQuote(plat)}`,
-    `AND bun=${sqlQuote(bun)}`,
-    `AND ji=${sqlQuote(ji)}`
+    `AND CAST(bun AS INTEGER)=${bunNum}`,
+    `AND CAST(ji AS INTEGER)=${jiNum}`
   ].join(' ');
   const result = await execFileAsync('sqlite3', ['-csv', '-noheader', LOCAL_HOUSING_SQLITE_PATH, sql]);
   return result.stdout
@@ -619,16 +701,66 @@ function mapBuildingRegistrySummary(titleItems = [], recapItems = []) {
   };
 }
 
+function countTextValue(map, value) {
+  const text = String(value || '').trim();
+  if (!text || text === '-') return;
+  map.set(text, (map.get(text) || 0) + 1);
+}
+
+function pickTopCountValue(map, fallback = '-') {
+  if (!(map instanceof Map) || map.size === 0) return fallback;
+  let topValue = fallback;
+  let topCount = -1;
+  for (const [value, count] of map.entries()) {
+    if (count > topCount) {
+      topCount = count;
+      topValue = value;
+    }
+  }
+  return topValue || fallback;
+}
+
 function mapDongInfo(floorItems, titleItems = []) {
+  const titleRows = Array.isArray(titleItems) ? titleItems : [];
+  const titleMerged = titleRows[0] || {};
+  const globalMainPurpose = String(pickFirst(titleMerged, ['mainPurpsCdNm', 'mainPurpsNm'], '-'));
+  const globalStructure = String(pickFirst(titleMerged, ['strctCdNm', 'strctNm'], '-'));
+  const globalUseApprovalDate = formatDateYYYYMMDD(pickFirst(titleMerged, ['useAprDay', 'useAprDate'], '-'));
+
+  const dongMeta = new Map();
+  const collectDongMeta = (row = {}) => {
+    const rawDong = String(pickFirst(row, ['dongNm', 'bldNm'], '')).trim();
+    if (!rawDong) return;
+    const dongName = formatDongName(rawDong);
+    if (!dongMeta.has(dongName)) {
+      dongMeta.set(dongName, {
+        mainPurposeCounts: new Map(),
+        structureCounts: new Map(),
+        useApprovalDateCounts: new Map()
+      });
+    }
+    const target = dongMeta.get(dongName);
+    countTextValue(target.mainPurposeCounts, pickFirst(row, ['mainPurpsCdNm', 'mainPurpsNm'], ''));
+    countTextValue(target.structureCounts, pickFirst(row, ['strctCdNm', 'strctNm'], ''));
+    countTextValue(
+      target.useApprovalDateCounts,
+      formatDateYYYYMMDD(pickFirst(row, ['useAprDay', 'useAprDate'], ''))
+    );
+  };
+
   const grouped = new Map();
   floorItems.forEach((item) => {
-    const dongName = String(pickFirst(item, ['dongNm', 'bldNm'], '동 미상'));
+    collectDongMeta(item);
+    const dongName = formatDongName(pickFirst(item, ['dongNm', 'bldNm'], '동 미상'));
     if (!grouped.has(dongName)) {
       grouped.set(dongName, {
         dongName,
         floorCount: 0,
         maxFloor: null,
-        minFloor: null
+        minFloor: null,
+        mainPurpose: globalMainPurpose,
+        structure: globalStructure,
+        useApprovalDate: globalUseApprovalDate
       });
     }
     const entry = grouped.get(dongName);
@@ -639,22 +771,45 @@ function mapDongInfo(floorItems, titleItems = []) {
       entry.minFloor = entry.minFloor === null ? floorNo : Math.min(entry.minFloor, floorNo);
     }
   });
-  if (grouped.size > 0) return [...grouped.values()];
+  titleRows.forEach((item) => collectDongMeta(item));
+
+  if (grouped.size > 0) {
+    return [...grouped.values()].map((entry) => {
+      const meta = dongMeta.get(String(entry.dongName || ''));
+      return {
+        ...entry,
+        mainPurpose: pickTopCountValue(meta?.mainPurposeCounts, entry.mainPurpose || '-'),
+        structure: pickTopCountValue(meta?.structureCounts, entry.structure || '-'),
+        useApprovalDate: pickTopCountValue(meta?.useApprovalDateCounts, entry.useApprovalDate || '-')
+      };
+    });
+  }
 
   // Fallback: some parcels return no floor outline rows, but title rows still include dong names.
-  titleItems.forEach((item) => {
-    const dongName = String(pickFirst(item, ['dongNm', 'bldNm'], '')).trim();
+  titleRows.forEach((item) => {
+    const dongName = formatDongName(pickFirst(item, ['dongNm', 'bldNm'], ''));
     if (!dongName) return;
     if (!grouped.has(dongName)) {
       grouped.set(dongName, {
         dongName,
         floorCount: 0,
         maxFloor: null,
-        minFloor: null
+        minFloor: null,
+        mainPurpose: globalMainPurpose,
+        structure: globalStructure,
+        useApprovalDate: globalUseApprovalDate
       });
     }
   });
-  return [...grouped.values()];
+  return [...grouped.values()].map((entry) => {
+    const meta = dongMeta.get(String(entry.dongName || ''));
+    return {
+      ...entry,
+      mainPurpose: pickTopCountValue(meta?.mainPurposeCounts, entry.mainPurpose || '-'),
+      structure: pickTopCountValue(meta?.structureCounts, entry.structure || '-'),
+      useApprovalDate: pickTopCountValue(meta?.useApprovalDateCounts, entry.useApprovalDate || '-')
+    };
+  });
 }
 
 function classifyExposPubuseType(item = {}) {
@@ -668,10 +823,29 @@ function classifyExposPubuseType(item = {}) {
   return 'unknown';
 }
 
-function mapHoInfo(exclusiveItems) {
+function shouldIncludeCommonForSupply(mainAtchName, etcPurpose) {
+  const mainAtch = normalizeNameToken(mainAtchName || '');
+  const etc = normalizeNameToken(etcPurpose || '');
+  if (!mainAtch.includes(normalizeNameToken(MAIN_BUILDING_TOKEN))) return false;
+  return SUPPLY_COMMON_ETC_TOKENS.some((token) => etc.includes(normalizeNameToken(token)));
+}
+
+function mapHoInfo(exclusiveItems, dongHintRows = []) {
+  const mgmPkToDong = new Map();
+  (Array.isArray(dongHintRows) ? dongHintRows : []).forEach((row) => {
+    const mgmPk = normalizeMgmPk(pickFirst(row, ['mgmBldrgstPk'], ''));
+    if (!mgmPk) return;
+    const dong = formatDongName(pickFirst(row, ['dongNm', 'bldNm'], ''));
+    if (!dong || dong === '동 미상') return;
+    if (!mgmPkToDong.has(mgmPk)) mgmPkToDong.set(mgmPk, dong);
+  });
+
   const grouped = new Map();
   (Array.isArray(exclusiveItems) ? exclusiveItems : []).forEach((item) => {
-    const dongName = formatDongName(pickFirst(item, ['dongNm'], '동 미상'));
+    const mgmPk = normalizeMgmPk(pickFirst(item, ['mgmBldrgstPk'], ''));
+    const rawDong = String(pickFirst(item, ['dongNm'], '')).trim();
+    const dongFromHint = mgmPk ? String(mgmPkToDong.get(mgmPk) || '').trim() : '';
+    const dongName = formatDongName(rawDong || dongFromHint || '동 미상');
     const hoName = formatHoName(pickFirst(item, ['hoNm'], '-'));
     if (hoName === '-') return;
     const key = `${dongName}|${hoName}`;
@@ -679,12 +853,15 @@ function mapHoInfo(exclusiveItems) {
       grouped.set(key, {
         dongName,
         hoName,
+        mgmBldrgstPk: mgmPk,
         floorNumber: toInteger(pickFirst(item, ['flrNo'])),
         floorType: String(pickFirst(item, ['flrGbCdNm'], '-')),
+        mainPurpose: String(pickFirst(item, ['mainPurpsCdNm', 'mainPurpsNm'], '-')),
         exclusiveAreaSquareMeter: null,
         commonAreaSquareMeter: null,
         supplyAreaSquareMeter: null,
-        areaSquareMeter: null
+        areaSquareMeter: null,
+        mainPurposeCounts: new Map()
       });
     }
 
@@ -694,6 +871,14 @@ function mapHoInfo(exclusiveItems) {
     }
     if (!row.floorType || row.floorType === '-') {
       row.floorType = String(pickFirst(item, ['flrGbCdNm'], '-'));
+    }
+    const rowMainPurpose = String(pickFirst(item, ['mainPurpsCdNm', 'mainPurpsNm'], '')).trim();
+    if (rowMainPurpose) {
+      countTextValue(row.mainPurposeCounts, rowMainPurpose);
+      row.mainPurpose = pickTopCountValue(row.mainPurposeCounts, row.mainPurpose || '-');
+    }
+    if (!row.mgmBldrgstPk) {
+      row.mgmBldrgstPk = mgmPk;
     }
 
     const area = toNumberLoose(pickFirst(item, ['area', 'exposPubuseArea', 'prvuseAr', 'pubuseAr'], null));
@@ -707,9 +892,15 @@ function mapHoInfo(exclusiveItems) {
       return;
     }
     if (type === 'common') {
-      row.commonAreaSquareMeter = Number.isFinite(Number(row.commonAreaSquareMeter))
-        ? Number(row.commonAreaSquareMeter) + area
-        : area;
+      const includeCommonForSupply = shouldIncludeCommonForSupply(
+        pickFirst(item, ['mainAtchGbCdNm', 'mainAtchGbNm'], ''),
+        pickFirst(item, ['etcPurps', 'etcUse'], '')
+      );
+      if (includeCommonForSupply) {
+        row.commonAreaSquareMeter = Number.isFinite(Number(row.commonAreaSquareMeter))
+          ? Number(row.commonAreaSquareMeter) + area
+          : area;
+      }
       return;
     }
 
@@ -728,15 +919,73 @@ function mapHoInfo(exclusiveItems) {
         : (Number.isFinite(exclusive) ? exclusive : null);
       return {
         ...item,
-        exclusiveAreaSquareMeter: Number.isFinite(exclusive) ? Number(exclusive.toFixed(2)) : null,
-        commonAreaSquareMeter: Number.isFinite(common) ? Number(common.toFixed(2)) : null,
-        supplyAreaSquareMeter: Number.isFinite(supply) ? Number(supply.toFixed(2)) : null,
+        mainPurpose: String(item.mainPurpose || '-').trim() || '-',
+        exclusiveAreaSquareMeter: Number.isFinite(exclusive) ? trunc2(exclusive) : null,
+        commonAreaSquareMeter: Number.isFinite(common) ? trunc2(common) : null,
+        supplyAreaSquareMeter: Number.isFinite(supply) ? trunc2(supply) : null,
         areaSquareMeter: Number.isFinite(exclusive)
-          ? Number(exclusive.toFixed(2))
-          : (Number.isFinite(supply) ? Number(supply.toFixed(2)) : null)
+          ? trunc2(exclusive)
+          : (Number.isFinite(supply) ? trunc2(supply) : null)
       };
     })
+    .map((item) => {
+      const out = { ...item };
+      delete out.mainPurposeCounts;
+      return out;
+    })
     .filter((item) => item.hoName !== '-');
+}
+
+function mapApDongOulnRawRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map((item) => ({
+    dongNm: String(pickFirst(item, ['dongNm', 'bldNm'], '')).trim() || '-',
+    hoNm: String(pickFirst(item, ['hoNm'], '')).trim() || '-',
+    flrNo: toIntegerLoose(pickFirst(item, ['flrNo'], null)),
+    flrGbCdNm: String(pickFirst(item, ['flrGbCdNm'], '')).trim() || '-',
+    mgmBldrgstPk: normalizeMgmPk(pickFirst(item, ['mgmBldrgstPk'], ''))
+  }));
+}
+
+function mapApExposPubuseAreaRawRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map((item) => ({
+    dongNm: String(pickFirst(item, ['dongNm'], '')).trim() || '-',
+    hoNm: String(pickFirst(item, ['hoNm'], '')).trim() || '-',
+    flrNo: toIntegerLoose(pickFirst(item, ['flrNo'], null)),
+    flrGbCdNm: String(pickFirst(item, ['flrGbCdNm'], '')).trim() || '-',
+    exposPubuseGbCdNm: String(pickFirst(item, ['exposPubuseGbCdNm', 'exposPubuseSeCdNm'], '')).trim() || '-',
+    mainAtchGbCdNm: String(pickFirst(item, ['mainAtchGbCdNm'], '')).trim() || '-',
+    etcPurps: String(pickFirst(item, ['etcPurps'], '')).trim() || '-',
+    area: toNumberLoose(pickFirst(item, ['area', 'exposPubuseArea', 'prvuseAr', 'pubuseAr'], null)),
+    mgmBldrgstPk: normalizeMgmPk(pickFirst(item, ['mgmBldrgstPk'], ''))
+  }));
+}
+
+function mapBrFlrOulnRawRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map((item) => ({
+    dongNm: String(pickFirst(item, ['dongNm', 'bldNm'], '')).trim() || '-',
+    hoNm: String(pickFirst(item, ['hoNm'], '')).trim() || '-',
+    flrNo: toIntegerLoose(pickFirst(item, ['flrNo'], null)),
+    flrGbCdNm: String(pickFirst(item, ['flrGbCdNm'], '')).trim() || '-',
+    mainPurpsCdNm: String(pickFirst(item, ['mainPurpsCdNm'], '')).trim() || '-',
+    etcPurps: String(pickFirst(item, ['etcPurps'], '')).trim() || '-',
+    area: toNumberLoose(pickFirst(item, ['area'], null)),
+    mgmBldrgstPk: normalizeMgmPk(pickFirst(item, ['mgmBldrgstPk'], ''))
+  }));
+}
+
+function mapBrExposPubuseAreaRawRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map((item) => ({
+    dongNm: String(pickFirst(item, ['dongNm'], '')).trim() || '-',
+    hoNm: String(pickFirst(item, ['hoNm'], '')).trim() || '-',
+    flrNo: toIntegerLoose(pickFirst(item, ['flrNo'], null)),
+    flrGbCdNm: String(pickFirst(item, ['flrGbCdNm'], '')).trim() || '-',
+    exposPubuseGbCdNm: String(pickFirst(item, ['exposPubuseGbCdNm', 'exposPubuseSeCdNm'], '')).trim() || '-',
+    mainAtchGbCdNm: String(pickFirst(item, ['mainAtchGbCdNm'], '')).trim() || '-',
+    mainPurpsCdNm: String(pickFirst(item, ['mainPurpsCdNm'], '')).trim() || '-',
+    etcPurps: String(pickFirst(item, ['etcPurps'], '')).trim() || '-',
+    area: toNumberLoose(pickFirst(item, ['area', 'exposPubuseArea', 'prvuseAr', 'pubuseAr'], null)),
+    mgmBldrgstPk: normalizeMgmPk(pickFirst(item, ['mgmBldrgstPk'], ''))
+  }));
 }
 
 async function fetchBuildingRegistryDetails(parcel) {
@@ -746,7 +995,13 @@ async function fetchBuildingRegistryDetails(parcel) {
       reason: 'BUILDING_REGISTRY_SERVICE_KEY 누락 또는 지번 파라미터 부족',
       summary: null,
       dongInfo: [],
-      hoInfo: []
+      hoInfo: [],
+      apDongOulnInfo: [],
+      apExposPubuseAreaInfo: [],
+      apDongOulnRawRows: [],
+      apExposPubuseAreaRawRows: [],
+      brFlrOulnRawRows: [],
+      brExposPubuseAreaRawRows: []
     };
   }
 
@@ -772,11 +1027,48 @@ async function fetchBuildingRegistryDetails(parcel) {
       timeoutMs: 25000,
       retries: 1
     }).catch(() => []);
+    const exposItems = await callBuildingRegistryApi('getBrExposInfo', parcel, {
+      numOfRows: 500,
+      timeoutMs: 25000,
+      retries: 1
+    }).catch(() => []);
+    const apDongOulnRaw = await callBuildingRegistryApi('getApDongOulnInfo', parcel, {
+      numOfRows: 500,
+      timeoutMs: 25000,
+      retries: 1
+    }).catch(() => []);
+    const apExposPubuseAreaRaw = await callBuildingRegistryApi('getApExposPubuseAreaInfo', parcel, {
+      numOfRows: 1000,
+      timeoutMs: 25000,
+      retries: 1
+    }).catch(() => []);
 
     const summary = mapBuildingRegistrySummary(titleItems, recapItems);
-    const dongInfo = mapDongInfo(floorItems, titleItems);
-    const hoInfo = mapHoInfo(exclusiveItems);
-    const noCoreData = !titleItems.length && !recapItems.length && !floorItems.length && !exclusiveItems.length;
+    const dongInfo = mapDongInfo(floorItems, [...titleItems, ...recapItems]);
+    const hoInfoPrimary = mapHoInfo(exclusiveItems, floorItems).map((item) => ({ ...item, source: 'br-expos-pubuse' }));
+    const hoInfoSupplement = mapHoInfo(exposItems, floorItems).map((item) => ({ ...item, source: 'br-expos' }));
+    const hoInfoMap = new Map();
+    hoInfoPrimary.forEach((item) => {
+      const key = `${String(item?.dongName || '').trim()}|${String(item?.hoName || '').trim()}`;
+      if (!key) return;
+      hoInfoMap.set(key, item);
+    });
+    hoInfoSupplement.forEach((item) => {
+      const key = `${String(item?.dongName || '').trim()}|${String(item?.hoName || '').trim()}`;
+      if (!key || hoInfoMap.has(key)) return;
+      hoInfoMap.set(key, item);
+    });
+    const hoInfo = [...hoInfoMap.values()];
+    const apDongOulnInfo = mapDongInfo(apDongOulnRaw, [...titleItems, ...recapItems]);
+    const apExposPubuseAreaInfo = mapHoInfo(apExposPubuseAreaRaw, apDongOulnRaw);
+    const apDongOulnRawRows = mapApDongOulnRawRows(apDongOulnRaw);
+    const apExposPubuseAreaRawRows = mapApExposPubuseAreaRawRows(apExposPubuseAreaRaw);
+    const brFlrOulnRawRows = mapBrFlrOulnRawRows(floorItems);
+    const brExposPubuseAreaRawRows = [
+      ...mapBrExposPubuseAreaRawRows(exclusiveItems),
+      ...mapBrExposPubuseAreaRawRows(exposItems)
+    ];
+    const noCoreData = !titleItems.length && !recapItems.length && !floorItems.length && !exclusiveItems.length && !exposItems.length;
     const reason = noCoreData
       ? '건축물대장 API 응답이 지연되거나 비어 있습니다. 잠시 후 다시 시도해 주세요.'
       : ((!dongInfo.length && !hoInfo.length)
@@ -789,11 +1081,20 @@ async function fetchBuildingRegistryDetails(parcel) {
       summary,
       dongInfo,
       hoInfo,
+      apDongOulnInfo,
+      apExposPubuseAreaInfo,
+      apDongOulnRawRows,
+      apExposPubuseAreaRawRows,
+      brFlrOulnRawRows,
+      brExposPubuseAreaRawRows,
       debug: {
         titleCount: titleItems.length,
         recapCount: recapItems.length,
         floorCount: floorItems.length,
-        exclusiveCount: exclusiveItems.length
+        exclusiveCount: exclusiveItems.length,
+        exposCount: exposItems.length,
+        apDongOulnCount: apDongOulnRaw.length,
+        apExposPubuseAreaCount: apExposPubuseAreaRaw.length
       }
     };
   } catch (error) {
@@ -803,6 +1104,12 @@ async function fetchBuildingRegistryDetails(parcel) {
       summary: null,
       dongInfo: [],
       hoInfo: [],
+      apDongOulnInfo: [],
+      apExposPubuseAreaInfo: [],
+      apDongOulnRawRows: [],
+      apExposPubuseAreaRawRows: [],
+      brFlrOulnRawRows: [],
+      brExposPubuseAreaRawRows: [],
       debug: null
     };
   }
@@ -1777,6 +2084,329 @@ async function fetchVworldApartPriceUnits(parcel) {
   };
 }
 
+function toUnitKey(dongName, hoName) {
+  const dong = String(dongName || '').trim();
+  const ho = String(hoName || '').trim();
+  if (!dong || !ho || ho === '-') return '';
+  return `${dong}|${ho}`;
+}
+
+function toMgmPkKey(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (/[eE][+-]?\d+/u.test(raw)) return '';
+  return raw.replace(/\D/g, '');
+}
+
+function normalizeMgmPk(value) {
+  const key = toMgmPkKey(value);
+  return key && key.length >= 10 ? key : null;
+}
+
+function toParcelKeyParts(sggCd, stdgCd, plotCd, mno, sno) {
+  const sgg = String(sggCd || '').trim();
+  const stdg = String(stdgCd || '').trim();
+  const plot = String(plotCd || '0').trim();
+  const bun = String(mno || '').trim().padStart(4, '0');
+  const ji = String(sno || '').trim().padStart(4, '0');
+  if (!sgg || !stdg) return '';
+  return `${sgg}|${stdg}|${plot}|${bun}|${ji}`;
+}
+
+function toParcelKeyFromParcel(parcel) {
+  if (!parcel) return '';
+  return toParcelKeyParts(parcel.sigunguCd, parcel.bjdongCd, parcel.platGbCd, parcel.bun, parcel.ji);
+}
+
+function ensureLocalExposJsonIndexReady() {
+  if (!LOCAL_EXPOS_AREA_JSON_PATH) return { ok: false, reason: '전유공용 JSON 파일 없음' };
+  if (LOCAL_EXPOS_AREA_JSON_INDEX.ready) return { ok: true, reason: '' };
+  try {
+    if (!Array.isArray(LOCAL_EXPOS_AREA_JSON_ROWS)) {
+      const raw = fs.readFileSync(LOCAL_EXPOS_AREA_JSON_PATH, 'utf8');
+      const json = JSON.parse(raw);
+      LOCAL_EXPOS_AREA_JSON_ROWS = Array.isArray(json?.Data) ? json.Data : [];
+    }
+    const byParcel = new Map();
+    LOCAL_EXPOS_AREA_JSON_ROWS
+      .filter((row) => row && typeof row === 'object')
+      .forEach((row) => {
+        const parcelKey = toParcelKeyParts(row.SGG_CD, row.STDG_CD, row.PLOT_SE_CD, row.MNO, row.SNO);
+        if (!parcelKey) return;
+        if (!byParcel.has(parcelKey)) byParcel.set(parcelKey, []);
+        byParcel.get(parcelKey).push({
+          dongName: formatDongName(row.DNG_NM),
+          hoName: formatHoName(row.HO_NM),
+          mgmBldrgstPk: normalizeMgmPk(row.BDRG_SN),
+          floorNumber: toInteger(row.FLR_NO),
+          floorType: String(row.FLR_SE_CD_NM || '-'),
+          epcmName: normalizeNameToken(row.EPCM_SE_CD_NM || ''),
+          etcUse: normalizeNameToken(row.ETC_USG || ''),
+          manxName: normalizeNameToken(String(row.MANX_SE_CD_NM || '')),
+          area: toNumberLoose(row.AREA)
+        });
+      });
+    LOCAL_EXPOS_AREA_JSON_INDEX.byParcel = byParcel;
+    LOCAL_EXPOS_AREA_JSON_INDEX.ready = true;
+    LOCAL_EXPOS_AREA_JSON_INDEX.lastError = '';
+    return { ok: true, reason: '' };
+  } catch (error) {
+    LOCAL_EXPOS_AREA_JSON_INDEX.ready = false;
+    LOCAL_EXPOS_AREA_JSON_INDEX.lastError = error.message || 'index build failed';
+    return { ok: false, reason: LOCAL_EXPOS_AREA_JSON_INDEX.lastError };
+  }
+}
+
+async function fetchLocalExposAreaUnits(parcel) {
+  if ((!LOCAL_EXPOS_AREA_JSON_PATH && !LOCAL_EXPOS_AREA_CSV_PATH) || !parcel) {
+    return {
+      available: false,
+      reason: '전유공용면적 원본(JSON/CSV) 경로가 없거나 필지정보가 없습니다.',
+      filePath: LOCAL_EXPOS_AREA_JSON_PATH || LOCAL_EXPOS_AREA_CSV_PATH || null,
+      hoCandidates: []
+    };
+  }
+  const legalCode = `${String(parcel.sigunguCd || '')}${String(parcel.bjdongCd || '')}`;
+  const bun = String(Number.parseInt(String(parcel.bun || '0'), 10) || 0).padStart(4, '0');
+  const ji = String(Number.parseInt(String(parcel.ji || '0'), 10) || 0).padStart(4, '0');
+  const plat = String(parcel.platGbCd || '0');
+  const cacheKey = `${legalCode}|${plat}|${bun}|${ji}|expos`;
+  if (LOCAL_EXPOS_AREA_CACHE.has(cacheKey)) return LOCAL_EXPOS_AREA_CACHE.get(cacheKey);
+  const exposSourceTag = LOCAL_EXPOS_AREA_JSON_PATH ? 'local-expos-json' : 'local-expos-csv';
+
+  let normalizedRows = [];
+  if (LOCAL_EXPOS_AREA_JSON_PATH) {
+    const indexed = ensureLocalExposJsonIndexReady();
+    if (!indexed.ok) {
+      const failed = {
+        available: false,
+        reason: `전유공용면적 JSON 조회 실패: ${indexed.reason || 'unknown'}`,
+        filePath: LOCAL_EXPOS_AREA_JSON_PATH,
+        hoCandidates: []
+      };
+      LOCAL_EXPOS_AREA_CACHE.set(cacheKey, failed);
+      return failed;
+    }
+
+    const parcelKey = toParcelKeyFromParcel(parcel);
+    normalizedRows = [...(LOCAL_EXPOS_AREA_JSON_INDEX.byParcel.get(parcelKey) || [])];
+  } else {
+    const awkScript = 'NR>1 {'
+      + 'c2=$2; c3=$3; c4=$4; c5=$5; c6=$6; '
+      + 'gsub(/"/,"",c2); gsub(/"/,"",c3); gsub(/"/,"",c4); gsub(/"/,"",c5); gsub(/"/,"",c6); '
+      + 'if (c2==sigungu && c3==bjdong && c4==plat && c5==bun && c6==ji) print'
+      + '}';
+    const lines = await new Promise((resolve, reject) => {
+      const child = spawn('awk', [
+        '-F,',
+        '-v', `sigungu=${String(parcel.sigunguCd || '')}`,
+        '-v', `bjdong=${String(parcel.bjdongCd || '')}`,
+        '-v', `plat=${plat}`,
+        '-v', `bun=${bun}`,
+        '-v', `ji=${ji}`,
+        awkScript,
+        LOCAL_EXPOS_AREA_CSV_PATH
+      ]);
+      const out = [];
+      let err = '';
+      child.stdout.on('data', (chunk) => {
+        const text = String(chunk || '');
+        text.split('\n').forEach((line) => {
+          const trimmed = line.trim();
+          if (trimmed) out.push(trimmed);
+        });
+      });
+      child.stderr.on('data', (chunk) => {
+        err += String(chunk || '');
+      });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(err || `awk exited with code ${code}`));
+          return;
+        }
+        resolve(out);
+      });
+    }).catch((error) => ({ __error: error }));
+
+    if (!Array.isArray(lines)) {
+      const failed = {
+        available: false,
+        reason: `전유공용면적 CSV 조회 실패: ${lines?.__error?.message || 'unknown'}`,
+        filePath: LOCAL_EXPOS_AREA_CSV_PATH,
+        hoCandidates: []
+      };
+      LOCAL_EXPOS_AREA_CACHE.set(cacheKey, failed);
+      return failed;
+    }
+
+    normalizedRows = lines
+      .map((line) => parseCsvLine(line))
+      .filter((cols) => cols.length >= 38)
+      .map((cols) => ({
+        dongName: formatDongName(cols[21]),
+        hoName: formatHoName(cols[22]),
+        mgmBldrgstPk: normalizeMgmPk(cols[6]),
+        floorNumber: toInteger(cols[25]),
+        floorType: String(cols[24] || '-'),
+        epcmName: normalizeNameToken(cols[27] || ''),
+        etcUse: normalizeNameToken(cols[36] || ''),
+        manxName: normalizeNameToken(cols[29] || ''),
+        area: toNumberLoose(cols[37])
+      }));
+  }
+
+  const grouped = new Map();
+  normalizedRows.forEach((rowData) => {
+      const dongName = rowData.dongName;
+      const hoName = rowData.hoName;
+      const key = toUnitKey(dongName, hoName);
+      if (!key) return;
+      const area = toNumberLoose(rowData.area);
+      if (!Number.isFinite(area) || area <= 0) return;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          dongName,
+          hoName,
+          mgmBldrgstPk: normalizeMgmPk(rowData.mgmBldrgstPk),
+          areaSquareMeter: null,
+          exclusiveAreaSquareMeter: null,
+          supplyCommonAreaSquareMeter: null,
+          supplyAreaSquareMeter: null,
+          floorNumber: toInteger(rowData.floorNumber),
+          floorType: String(rowData.floorType || '-'),
+          pyeongLabel: '',
+          source: exposSourceTag
+        });
+      }
+      const row = grouped.get(key);
+      if (!row.mgmBldrgstPk) row.mgmBldrgstPk = normalizeMgmPk(rowData.mgmBldrgstPk);
+      const epcmName = normalizeNameToken(rowData.epcmName || '');
+      const isExclusive = epcmName.includes('전유');
+      const isCommon = epcmName.includes('공용');
+      const includeCommonForSupply = isCommon && shouldIncludeCommonForSupply(
+        rowData.manxName || '',
+        rowData.etcUse || ''
+      );
+
+      if (isExclusive) {
+        row.exclusiveAreaSquareMeter = Number.isFinite(Number(row.exclusiveAreaSquareMeter))
+          ? Number(row.exclusiveAreaSquareMeter) + area
+          : area;
+      }
+      if (includeCommonForSupply) {
+        row.supplyCommonAreaSquareMeter = Number.isFinite(Number(row.supplyCommonAreaSquareMeter))
+          ? Number(row.supplyCommonAreaSquareMeter) + area
+          : area;
+      }
+  });
+
+  const rows = [...grouped.values()]
+    .map((item) => {
+      const exclusive = toNumberLoose(item.exclusiveAreaSquareMeter);
+      const supplyCommon = toNumberLoose(item.supplyCommonAreaSquareMeter);
+      const supply = Number.isFinite(exclusive)
+        ? (Number.isFinite(supplyCommon) ? exclusive + supplyCommon : null)
+        : null;
+      const area = Number.isFinite(exclusive) ? exclusive : supply;
+      return {
+        ...item,
+        exclusiveAreaSquareMeter: Number.isFinite(exclusive) ? trunc2(exclusive) : null,
+        supplyAreaSquareMeter: Number.isFinite(supply) ? trunc2(supply) : null,
+        areaSquareMeter: Number.isFinite(area) ? trunc2(area) : null,
+        pyeongLabel: Number.isFinite(area) ? toPyeongLabel(area) : '-'
+      };
+    })
+    .filter((item) => item.hoName !== '-')
+    .filter((item) => Number.isFinite(Number(item.exclusiveAreaSquareMeter)) || Number.isFinite(Number(item.supplyAreaSquareMeter)));
+
+  const result = {
+    available: rows.length > 0,
+    reason: rows.length ? '' : '전유공용면적 원본(JSON/CSV)에서 필지 매칭 결과가 없습니다.',
+    filePath: LOCAL_EXPOS_AREA_JSON_PATH || LOCAL_EXPOS_AREA_CSV_PATH,
+    hoCandidates: rows
+  };
+  LOCAL_EXPOS_AREA_CACHE.set(cacheKey, result);
+  return result;
+}
+
+function mergeSupplyUnits(primaryUnits = [], supplementUnits = [], options = {}) {
+  const base = Array.isArray(primaryUnits) ? primaryUnits : [];
+  const supp = Array.isArray(supplementUnits) ? supplementUnits : [];
+  if (!supp.length) return base;
+  const pkOnly = Boolean(options?.pkOnly);
+  const appendUnmatched = options?.appendUnmatched !== false;
+
+  const byMgmPk = new Map();
+  const byDongHo = new Map();
+  const matchedSuppKeys = new Set();
+  supp.forEach((item) => {
+    const mgmPkKey = toMgmPkKey(item?.mgmBldrgstPk);
+    if (mgmPkKey) byMgmPk.set(mgmPkKey, item);
+    const dongHoKey = toUnitKey(item?.dongName, item?.hoName);
+    if (dongHoKey) byDongHo.set(dongHoKey, item);
+  });
+
+  const merged = base.map((item) => {
+    const mgmPkKey = toMgmPkKey(item?.mgmBldrgstPk);
+    const dongHoKey = toUnitKey(item?.dongName, item?.hoName);
+    const source = pkOnly
+      ? ((mgmPkKey && byMgmPk.get(mgmPkKey)) || null)
+      : ((mgmPkKey && byMgmPk.get(mgmPkKey))
+        || (dongHoKey && byDongHo.get(dongHoKey))
+        || null);
+    if (!source) return item;
+    if (mgmPkKey && byMgmPk.has(mgmPkKey)) matchedSuppKeys.add(`pk:${mgmPkKey}`);
+    if (dongHoKey && byDongHo.has(dongHoKey)) matchedSuppKeys.add(`dh:${dongHoKey}`);
+    const exclusive = toNumberLoose(item?.exclusiveAreaSquareMeter ?? item?.areaSquareMeter);
+    const supply = toNumberLoose(item?.supplyAreaSquareMeter ?? item?.supplyArea);
+    const sourceExclusive = toNumberLoose(source?.exclusiveAreaSquareMeter);
+    const sourceSupply = toNumberLoose(source?.supplyAreaSquareMeter);
+    // If CSV has the value, prefer it over previously estimated/aggregated values.
+    const mergedExclusive = Number.isFinite(sourceExclusive) ? sourceExclusive : exclusive;
+    const mergedSupply = Number.isFinite(sourceSupply) ? sourceSupply : supply;
+    const area = Number.isFinite(mergedExclusive) ? mergedExclusive : toNumberLoose(item?.areaSquareMeter);
+    return {
+      ...item,
+      mgmBldrgstPk: normalizeMgmPk(item?.mgmBldrgstPk) || normalizeMgmPk(source?.mgmBldrgstPk),
+      exclusiveAreaSquareMeter: Number.isFinite(mergedExclusive) ? trunc2(mergedExclusive) : null,
+      supplyAreaSquareMeter: Number.isFinite(mergedSupply) ? trunc2(mergedSupply) : null,
+      areaSquareMeter: Number.isFinite(area) ? trunc2(area) : null,
+      source: (String(item?.source || '').includes('local-expos-csv') || String(item?.source || '').includes('local-expos-json'))
+        ? item.source
+        : `${item?.source || 'unknown'}+${source?.source || 'local-expos-csv'}`
+    };
+  });
+
+  if (!appendUnmatched) return merged;
+
+  // If supplement has rows not present in base, append them so parcel-wide mapping is preserved.
+  const appended = supp
+    .filter((item) => {
+      const mgmPkKey = toMgmPkKey(item?.mgmBldrgstPk);
+      if (mgmPkKey && matchedSuppKeys.has(`pk:${mgmPkKey}`)) return false;
+      const dongHoKey = toUnitKey(item?.dongName, item?.hoName);
+      if (dongHoKey && matchedSuppKeys.has(`dh:${dongHoKey}`)) return false;
+      return true;
+    })
+    .map((item) => {
+      const exclusive = toNumberLoose(item?.exclusiveAreaSquareMeter ?? item?.areaSquareMeter);
+      const supply = toNumberLoose(item?.supplyAreaSquareMeter ?? item?.supplyArea);
+      const area = Number.isFinite(exclusive) ? exclusive : toNumberLoose(item?.areaSquareMeter);
+      return {
+        ...item,
+        mgmBldrgstPk: normalizeMgmPk(item?.mgmBldrgstPk),
+        exclusiveAreaSquareMeter: Number.isFinite(exclusive) ? trunc2(exclusive) : null,
+        supplyAreaSquareMeter: Number.isFinite(supply) ? trunc2(supply) : null,
+        areaSquareMeter: Number.isFinite(area) ? trunc2(area) : null,
+        source: String(item?.source || (LOCAL_EXPOS_AREA_JSON_PATH ? 'local-expos-json' : 'local-expos-csv'))
+      };
+    });
+
+  return [...merged, ...appended];
+}
+
 async function fetchLocalCsvHousingUnitsByAwk(parcel) {
   if (!LOCAL_HOUSING_CSV_PATH || !parcel) {
     return {
@@ -1807,7 +2437,7 @@ async function fetchLocalCsvHousingUnitsByAwk(parcel) {
   const awkScript = 'NR>1 {'
     + 'c3=$3; c9=$9; c10=$10; c11=$11; '
     + 'gsub(/"/,"",c3); gsub(/"/,"",c9); gsub(/"/,"",c10); gsub(/"/,"",c11); '
-    + 'if (c3==legal && c9==plat && c10==bun && c11==ji) print'
+    + 'if (c3==legal && c9==plat && (c10+0)==(bun+0) && (c11+0)==(ji+0)) print'
     + '}';
   const lines = await new Promise((resolve, reject) => {
     const child = spawn('awk', [
@@ -1854,12 +2484,13 @@ async function fetchLocalCsvHousingUnitsByAwk(parcel) {
 
   const mapped = lines
     .map((line) => parseCsvLine(line))
-    .filter((cols) => cols.length >= 20)
+    .filter((cols) => cols.length >= 21)
     .map((cols) => {
       const area = toNumber(cols[15]);
       return {
         dongName: formatDongName(cols[13]),
         hoName: formatHoName(cols[14]),
+        mgmBldrgstPk: normalizeMgmPk(cols[20]),
         floorNumber: null,
         floorType: '공동주택가격(로컬CSV)',
         areaSquareMeter: area,
@@ -1907,12 +2538,13 @@ async function fetchLocalCsvHousingUnits(parcel) {
   try {
     const colsRows = await queryLocalCsvSqliteRows(parcel);
     const mapped = colsRows
-      .filter((cols) => cols.length >= 4)
+      .filter((cols) => cols.length >= 5)
       .map((cols) => {
         const area = toNumber(cols[2]);
         return {
           dongName: formatDongName(cols[0]),
           hoName: formatHoName(cols[1]),
+          mgmBldrgstPk: normalizeMgmPk(cols[4]),
           floorNumber: null,
           floorType: '공동주택가격(로컬CSV)',
           areaSquareMeter: area,
@@ -2196,104 +2828,74 @@ async function fetchRebAptIdDetails(normalized) {
 }
 
 async function fetchHousingUnitPipeline(normalized, registry, rebAptId, vworldAptPrice, localCsvAptPrice) {
-  const fromRegistry = Array.isArray(registry?.hoInfo) ? registry.hoInfo : [];
-  const fromRegistryDong = Array.isArray(registry?.dongInfo) ? registry.dongInfo : [];
   const fromRebDong = Array.isArray(rebAptId?.dongInfo) ? rebAptId.dongInfo : [];
-  const fromVworld = Array.isArray(vworldAptPrice?.hoCandidates) ? vworldAptPrice.hoCandidates : [];
   const fromLocalCsv = Array.isArray(localCsvAptPrice?.hoCandidates) ? localCsvAptPrice.hoCandidates : [];
-  const fromVworldUnits = pickRepresentativeUnits(fromVworld);
-  const fromLocalCsvUnits = pickRepresentativeUnits(fromLocalCsv);
-  const lhSupply = await fetchLhSupplyHints(normalized).catch(() => ({
+  const fromRegistryHo = pickRepresentativeUnits(
+    (Array.isArray(registry?.hoInfo) ? registry.hoInfo : []).map((item) => ({ ...item, source: 'registry' }))
+  );
+  const fromExposCsvResult = await fetchLocalExposAreaUnits(normalized?.parcel || null).catch(() => ({
     available: false,
-    reason: 'LH 공급면적 조회 실패',
-    hints: []
+    reason: '전유공용면적 원본(JSON/CSV) 조회 실패',
+    hoCandidates: []
   }));
-
-  if (fromLocalCsvUnits.length) {
-    const supplyApplied = applyLhSupplyFallback(fromLocalCsvUnits, lhSupply);
-    updateComplexSupplyHintsCache(normalized, supplyApplied.rows);
-    const cacheApplied = applyComplexSupplyFallback(normalized, supplyApplied.rows);
+  const exposLabel = String(fromExposCsvResult?.filePath || '').toLowerCase().endsWith('.json')
+    ? '전유공용면적 JSON'
+    : '전유공용면적 CSV';
+  const fromExposCsv = Array.isArray(fromExposCsvResult?.hoCandidates) ? fromExposCsvResult.hoCandidates : [];
+  const exposUnits = pickRepresentativeUnits(fromExposCsv);
+  if (exposUnits.length) {
     return {
-      source: 'local-csv',
-      hoCandidates: cacheApplied.rows,
-      dongCandidates: mergeDongCandidates(groupDongCandidates(fromLocalCsvUnits), fromRebDong),
+      source: String(exposUnits[0]?.source || 'local-expos-csv'),
+      hoCandidates: exposUnits,
+      dongCandidates: mergeDongCandidates(groupDongCandidates(exposUnits), fromRebDong),
       note: [
-        supplyApplied.appliedCount > 0 ? `LH 공급면적 fallback ${supplyApplied.appliedCount}건 적용` : '',
-        cacheApplied.appliedCount > 0 ? `단지 전용→공급 매핑 ${cacheApplied.appliedCount}건 적용` : ''
+        `${exposLabel} 원천`
       ].filter(Boolean).join(' / ')
     };
   }
 
-  if (fromVworldUnits.length) {
-    const supplyApplied = applyLhSupplyFallback(fromVworldUnits, lhSupply);
-    updateComplexSupplyHintsCache(normalized, supplyApplied.rows);
-    const cacheApplied = applyComplexSupplyFallback(normalized, supplyApplied.rows);
+  const localRows = pickRepresentativeUnits(fromLocalCsv)
+    .map((item) => {
+      const ex = toNumberLoose(item?.exclusiveAreaSquareMeter ?? item?.areaSquareMeter);
+      return {
+        ...item,
+        exclusiveAreaSquareMeter: Number.isFinite(ex) ? trunc2(ex) : null,
+        supplyAreaSquareMeter: null,
+        areaSquareMeter: Number.isFinite(ex) ? trunc2(ex) : toNumberLoose(item?.areaSquareMeter),
+        source: 'local-csv'
+      };
+    })
+    .filter((item) => item.hoName !== '-');
+  if (localRows.length) {
+    const mergedWithRegistry = mergeSupplyUnits(localRows, fromRegistryHo, {
+      pkOnly: true,
+      appendUnmatched: false
+    });
+    const hasSupply = mergedWithRegistry.some((item) => Number.isFinite(toNumberLoose(item?.supplyAreaSquareMeter)));
     return {
-      source: 'vworld-apt-price',
-      hoCandidates: cacheApplied.rows,
-      dongCandidates: mergeDongCandidates(groupDongCandidates(fromVworldUnits), fromRebDong),
-      note: [
-        supplyApplied.appliedCount > 0 ? `LH 공급면적 fallback ${supplyApplied.appliedCount}건 적용` : '',
-        cacheApplied.appliedCount > 0 ? `단지 전용→공급 매핑 ${cacheApplied.appliedCount}건 적용` : ''
-      ].filter(Boolean).join(' / ')
+      source: hasSupply ? 'local-csv+registry' : 'local-csv',
+      hoCandidates: mergedWithRegistry,
+      dongCandidates: mergeDongCandidates(groupDongCandidates(mergedWithRegistry), fromRebDong),
+      note: hasSupply
+        ? '전유공용면적 JSON 없음: 주택공시가격 + 건축물대장(Br) PK연동 공급/전용 보강'
+        : '전유공용면적 JSON 없음: 주택공시가격 전용면적만 표시'
     };
   }
 
-  if (fromRegistry.length || fromRegistryDong.length) {
-    const fromRegistryUnits = pickRepresentativeUnits(fromRegistry.map((item) => ({
-      ...item,
-      pyeongLabel: toPyeongLabel(item.areaSquareMeter),
-      source: 'registry'
-    })).filter((item) => !isUndergroundUnit(item)));
-    const supplyApplied = applyLhSupplyFallback(fromRegistryUnits, lhSupply);
-    updateComplexSupplyHintsCache(normalized, supplyApplied.rows);
-    const cacheApplied = applyComplexSupplyFallback(normalized, supplyApplied.rows);
+  if (fromRegistryHo.length) {
     return {
-      source: 'building-registry',
-      hoCandidates: cacheApplied.rows,
-      dongCandidates: mergeDongCandidates(
-        fromRegistryDong.map((item) => ({ ...item, source: item.source || 'registry' })),
-        fromRebDong
-      ),
-      note: [
-        supplyApplied.appliedCount > 0 ? `LH 공급면적 fallback ${supplyApplied.appliedCount}건 적용` : '',
-        cacheApplied.appliedCount > 0 ? `단지 전용→공급 매핑 ${cacheApplied.appliedCount}건 적용` : ''
-      ].filter(Boolean).join(' / ')
+      source: 'registry',
+      hoCandidates: fromRegistryHo,
+      dongCandidates: mergeDongCandidates(groupDongCandidates(fromRegistryHo), fromRebDong),
+      note: '전유공용면적 JSON/주택공시가격 없음: 건축물대장(Br) 원본 사용'
     };
   }
-
-  const lawdCd = String(normalized?.parcel?.sigunguCd || '');
-  if (!MOLIT_RTMS_SERVICE_KEY || lawdCd.length !== 5) {
-    return {
-      source: 'none',
-      hoCandidates: [],
-      dongCandidates: [],
-      note: '실거래 API 키 미설정 또는 법정동 코드 부족'
-    };
-  }
-
-  const months = recentDealMonths(6);
-  const [aptRowsRaw, offiRowsRaw] = await Promise.all([
-    fetchRtmsRecords(RTMS_APT_URL, lawdCd, months),
-    fetchRtmsRecords(RTMS_OFFI_URL, lawdCd, months)
-  ]);
-
-  const aptRows = filterRtmsByBuildingName(aptRowsRaw, normalized?.building?.name || '');
-  const offiRows = filterRtmsByBuildingName(offiRowsRaw, normalized?.building?.name || '');
-
-  const hoCandidates = [
-    ...buildHoCandidatesFromRtms(aptRows, 'apt'),
-    ...buildHoCandidatesFromRtms(offiRows, 'officetel')
-  ].slice(0, 300);
-  const dongCandidates = mergeDongCandidates(groupDongCandidates(hoCandidates), fromRebDong);
 
   return {
-    source: 'rtms-fallback',
+    source: 'local-expos-json',
     hoCandidates: [],
-    dongCandidates,
-    note: dongCandidates.length
-      ? '실거래 기반 동/층 후보만 확인되었습니다. 실제 평수/호수 검증(VWorld) 데이터가 없어 호수를 미표시합니다.'
-      : '실거래 데이터에서도 동/층 후보를 찾지 못했습니다.'
+    dongCandidates: mergeDongCandidates([], fromRebDong),
+    note: fromExposCsvResult?.reason || `${exposLabel} 데이터 없음`
   };
 }
 
@@ -3014,6 +3616,132 @@ async function resolveAddressWithKakao(query) {
   };
 }
 
+function parcelToKey(parcel) {
+  if (!parcel) return '';
+  return [
+    String(parcel.sigunguCd || ''),
+    String(parcel.bjdongCd || ''),
+    String(parcel.platGbCd || ''),
+    String(parcel.bun || ''),
+    String(parcel.ji || '')
+  ].join('|');
+}
+
+async function resolveBestAddressWithKakao(query, depth = 0) {
+  const primary = await resolveAddressWithKakao(query);
+  if (!KAKAO_REST_API_KEY) return primary;
+
+  const headers = { Authorization: `KakaoAK ${KAKAO_REST_API_KEY}` };
+  let kwDocs = [];
+  const queryVariants = [query];
+  if (!/(서울|경기|부천|역곡|인천|부산|대구|광주|대전|울산|세종|제주)/u.test(query)) {
+    queryVariants.push(`부천 ${query}`);
+    queryVariants.push(`부천 역곡동 ${query}`);
+    queryVariants.push(`경기 부천시 원미구 역곡동 ${query}`);
+  }
+  for (const qv of queryVariants) {
+    try {
+      const kwRes = await axios.get(`${KAKAO_BASE_URL}/search/keyword.json`, {
+        params: { query: qv, size: 12, sort: 'accuracy' },
+        headers,
+        timeout: 9000
+      });
+      kwDocs.push(...(kwRes.data?.documents || []));
+    } catch (_error) {
+      // skip variant
+    }
+  }
+  kwDocs = kwDocs.filter((doc) => !isExcludedPlaceDoc(doc));
+  if (!kwDocs.length) {
+    return primary;
+  }
+
+  const candidates = [primary];
+  for (const doc of kwDocs.slice(0, 8)) {
+    try {
+      const addressLike = String(doc.road_address_name || doc.address_name || '').trim();
+      if (!addressLike) continue;
+      const addrRes = await axios.get(`${KAKAO_BASE_URL}/search/address.json`, {
+        params: { query: addressLike, size: 1 },
+        headers,
+        timeout: 9000
+      });
+      const addressDoc = addrRes.data?.documents?.[0] || null;
+      if (!addressDoc) continue;
+      const lat = toNumber(addressDoc.y) || toNumber(doc.y);
+      const lng = toNumber(addressDoc.x) || toNumber(doc.x);
+      if (!lat || !lng) continue;
+      const parcel = toBuildingParcelFromKakaoAddress(addressDoc);
+      if (!parcel) continue;
+      candidates.push({
+        provider: 'Kakao Local API',
+        building: {
+          name: doc.place_name || addressDoc.address?.building_name || '검색 건물',
+          fullAddress: String(addressDoc.address_name || ''),
+          roadAddress: String(addressDoc.road_address?.address_name || doc.road_address_name || ''),
+          address: String(addressDoc.address?.address_name || doc.address_name || addressDoc.address_name || ''),
+          category: String(doc.category_group_name || doc.category_name || '건물'),
+          use: String(doc.category_name || '미지정'),
+          region: inferRegion(addressDoc.road_address?.address_name, addressDoc.address_name),
+          lat,
+          lng,
+          placeUrl: String(doc.place_url || ''),
+          phone: String(doc.phone || '')
+        },
+        parcel
+      });
+    } catch (_error) {
+      // skip invalid candidate
+    }
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  candidates.forEach((item) => {
+    const key = parcelToKey(item?.parcel);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    deduped.push(item);
+  });
+  if (deduped.length <= 1) return primary;
+
+  const scored = await Promise.all(deduped.map(async (item) => {
+    try {
+      const expos = await fetchLocalExposAreaUnits(item.parcel);
+      const exposCount = Array.isArray(expos?.hoCandidates) ? expos.hoCandidates.length : 0;
+      const nameToken = normalizeNameToken(item?.building?.name || '');
+      const queryToken = normalizeNameToken(query || '');
+      const nameBoost = (nameToken && queryToken && (nameToken.includes(queryToken) || queryToken.includes(nameToken))) ? 5 : 0;
+      const exposBoost = exposCount > 0 ? 1000000 : 0;
+      return {
+        item,
+        score: exposBoost + (exposCount * 1000) + nameBoost
+      };
+    } catch (_error) {
+      return { item, score: 0 };
+    }
+  }));
+
+  scored.sort((a, b) => b.score - a.score);
+  const selected = scored[0]?.score > 0 ? scored[0].item : primary;
+  const hasRegionToken = /(서울|경기|부천|역곡|인천|부산|대구|광주|대전|울산|세종|제주)/u.test(query);
+  if (!hasRegionToken && depth < 1) {
+    try {
+      const expos = await fetchLocalExposAreaUnits(selected?.parcel || null);
+      const exposCount = Array.isArray(expos?.hoCandidates) ? expos.hoCandidates.length : 0;
+      if (exposCount <= 0) {
+        const alt = await resolveBestAddressWithKakao(`부천 ${query}`, depth + 1);
+        const altExpos = await fetchLocalExposAreaUnits(alt?.parcel || null);
+        const altCount = Array.isArray(altExpos?.hoCandidates) ? altExpos.hoCandidates.length : 0;
+        if (altCount > exposCount) return alt;
+      }
+    } catch (_error) {
+      // keep selected on fallback errors
+    }
+  }
+  return selected;
+}
+
 function mapKakaoSuggestion(doc, query) {
   const roadAddress = String(doc.road_address_name || '');
   const address = String(doc.address_name || '');
@@ -3162,7 +3890,7 @@ async function diagnoseLocation(query) {
       out.ok = false;
       return out;
     }
-    const normalized = await resolveAddressWithKakao(query);
+    const normalized = await resolveBestAddressWithKakao(query);
     out.steps.kakaoAddress = {
       ok: true,
       provider: normalized.provider,
@@ -3237,7 +3965,7 @@ app.get('/api/apartment/py-types', async (req, res) => {
     if (!KAKAO_REST_API_KEY) {
       return res.status(500).json({ ok: false, error: 'KAKAO_REST_API_KEY 누락' });
     }
-    const normalized = await resolveAddressWithKakao(q);
+    const normalized = await resolveBestAddressWithKakao(q);
     const [registry, vworld, localCsv] = await Promise.all([
       fetchBuildingRegistryDetails(normalized.parcel),
       fetchVworldApartPriceUnits(normalized.parcel),
@@ -3281,7 +4009,7 @@ app.get('/api/location/real-pyeong', async (req, res) => {
     if (!KAKAO_REST_API_KEY) {
       return res.status(500).json({ ok: false, error: 'KAKAO_REST_API_KEY 누락' });
     }
-    const normalized = await resolveAddressWithKakao(q);
+    const normalized = await resolveBestAddressWithKakao(q);
     const [registry, vworld, localCsv] = await Promise.all([
       fetchBuildingRegistryDetails(normalized.parcel),
       fetchVworldApartPriceUnits(normalized.parcel),
@@ -3352,7 +4080,7 @@ app.post('/api/location/map-listings', async (req, res) => {
   }
 
   try {
-    const normalized = await resolveAddressWithKakao(q);
+    const normalized = await resolveBestAddressWithKakao(q);
     const [registry, vworld, localCsv] = await Promise.all([
       fetchBuildingRegistryDetails(normalized.parcel),
       fetchVworldApartPriceUnits(normalized.parcel),
@@ -3419,7 +4147,7 @@ app.get('/api/location/search', async (req, res) => {
     let descriptionHints = null;
 
     if (KAKAO_REST_API_KEY) {
-      const normalized = await resolveAddressWithKakao(q);
+      const normalized = await resolveBestAddressWithKakao(q);
       providerResult = {
         provider: normalized.provider,
         building: normalized.building
@@ -3505,7 +4233,7 @@ app.get('/api/location/search', async (req, res) => {
       }
 
       const center = { lat: normalized.building.lat, lng: normalized.building.lng };
-      const [registryResult, mobilityResult, rebAptId, vworldResult, localCsvResult, descriptionHintsResult] = await Promise.all([
+      const [registryResult, mobilityResult, rebAptId, localCsvResult, descriptionHintsResult] = await Promise.all([
         fetchBuildingRegistryDetails(normalized.parcel),
         fetchMobilityAndRoad(center).catch(() => buildEmptyMobilityResult()),
         fetchRebAptIdDetails(normalized).catch((error) => ({
@@ -3513,13 +4241,6 @@ app.get('/api/location/search', async (req, res) => {
           reason: `REB 단지식별 조회 실패: ${error.response?.data?.msg || error.message}`,
           complex: null,
           dongInfo: []
-        })),
-        fetchVworldApartPriceUnits(normalized.parcel).catch((error) => ({
-          available: false,
-          reason: `VWorld 공동주택가격 조회 실패: ${error.response?.data?.apartHousingPrices?.resultMsg || error.message}`,
-          year: null,
-          pnu: null,
-          hoCandidates: []
         })),
         fetchLocalCsvHousingUnits(normalized.parcel).catch((error) => ({
           available: false,
@@ -3529,6 +4250,13 @@ app.get('/api/location/search', async (req, res) => {
         })),
         fetchDescriptionHints(center, normalized?.building?.region || '').catch(() => null)
       ]);
+      const vworldResult = {
+        available: false,
+        reason: '조회 비활성화: 전유공용면적 JSON 단일 원천 모드',
+        year: null,
+        pnu: null,
+        hoCandidates: []
+      };
       const housingResult = await fetchHousingUnitPipeline(normalized, registryResult, rebAptId, vworldResult, localCsvResult);
       registry = registryResult;
       mobility = mobilityResult;
@@ -3590,11 +4318,11 @@ app.get('/api/location/search', async (req, res) => {
       ? summary.mainPurpose
       : providerResult.building.use;
 
-    const realSource = pickRealPyeongSourceRows(localCsvAptPrice, vworldAptPrice, registry);
-    const pyeongTypes = buildPyeongTypeList(realSource.rows, {
+    const pyeongRows = pickRepresentativeUnits(Array.isArray(housingPipeline?.hoCandidates) ? housingPipeline.hoCandidates : []);
+    const pyeongTypes = buildPyeongTypeList(pyeongRows, {
       areaBandStep: 0.01,
       minUnits: 1,
-      includePriceStats: realSource.source === 'vworld' || realSource.source === 'local-csv',
+      includePriceStats: false,
       enforceResidentialArea: true
     });
 
@@ -3606,7 +4334,7 @@ app.get('/api/location/search', async (req, res) => {
       rebAptId: providerResult.rebAptId || null,
       vworldAptPrice,
       localCsvAptPrice,
-      pyeongSource: realSource.source,
+      pyeongSource: String(housingPipeline?.source || 'none'),
       pyeongTypes,
       housingPipeline,
       registryLinkage,

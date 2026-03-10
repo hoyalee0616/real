@@ -24,8 +24,15 @@ const elements = {
   buildingParkingCount: document.getElementById('building-parking-count'),
   buildingOverviewBody: document.getElementById('building-overview-body'),
   buildingDongList: document.getElementById('building-dong-list'),
+  buildingHoTable: document.getElementById('building-ho-table'),
   buildingHoList: document.getElementById('building-ho-list'),
   buildingDongHoSummary: document.getElementById('building-dongho-summary'),
+  buildingRegistrySummary: document.getElementById('building-registry-summary'),
+  buildingRegistryDongList: document.getElementById('building-registry-dong-list'),
+  buildingRegistryHoTable: document.getElementById('building-registry-ho-table'),
+  buildingRegistryNote: document.getElementById('building-registry-note'),
+  buildingRegistryApDongRaw: document.getElementById('building-registry-apdong-raw'),
+  buildingRegistryApExposRaw: document.getElementById('building-registry-apexpos-raw'),
   buildingNearbyList: document.getElementById('building-nearby-list'),
   buildingTransitSummary: document.getElementById('building-transit-summary'),
   listingDescTransport: document.getElementById('listing-desc-transport'),
@@ -120,6 +127,7 @@ const state = {
   buildingSelectedDong: '',
   buildingSelectedPyeongKey: '',
   buildingHoFallbackList: [],
+  buildingDongPurposeMap: {},
   listingTargetUnit: null,
   listingDraft: null,
   currentBuildingQuery: '',
@@ -460,6 +468,7 @@ function selectBuildingTab(tabName) {
   const panels = {
     overview: document.getElementById('building-tab-overview'),
     dongho: document.getElementById('building-tab-dongho'),
+    'registry-api': document.getElementById('building-tab-registry-api'),
     transit: document.getElementById('building-tab-transit'),
     description: document.getElementById('building-tab-description'),
     map: document.getElementById('building-tab-map')
@@ -805,14 +814,39 @@ function renderBuildingSearchResult(payload) {
     })
     .join('');
 
-  const dongInfoPrimary = registry?.dongInfo || [];
-  const hoInfoPrimary = registry?.hoInfo || [];
-  const dongInfo = (housingPipeline?.dongCandidates || []).length
-    ? (housingPipeline?.dongCandidates || [])
-    : dongInfoPrimary;
-  const hoInfo = (housingPipeline?.hoCandidates || []).length
-    ? (housingPipeline?.hoCandidates || [])
-    : hoInfoPrimary;
+  const dongInfoPrimary = Array.isArray(registry?.dongInfo) ? registry.dongInfo : [];
+  const hoInfoPrimary = Array.isArray(registry?.hoInfo) ? registry.hoInfo : [];
+  const dongInfoSupplement = Array.isArray(housingPipeline?.dongCandidates) ? housingPipeline.dongCandidates : [];
+  const hoInfoSupplement = Array.isArray(housingPipeline?.hoCandidates) ? housingPipeline.hoCandidates : [];
+
+  // Keep all dong/ho cases by merging registry(original) + supplement.
+  const dongMap = new Map();
+  [...dongInfoPrimary, ...dongInfoSupplement].forEach((item) => {
+    const key = String(item?.dongName || '').trim();
+    if (!key) return;
+    const prev = dongMap.get(key) || {};
+    dongMap.set(key, { ...prev, ...item, dongName: key });
+  });
+  const dongInfo = [...dongMap.values()];
+
+  const hoMap = new Map();
+  [...hoInfoPrimary, ...hoInfoSupplement].forEach((item) => {
+    const dong = String(item?.dongName || '').trim() || '동 미상';
+    const ho = String(item?.hoName || '').trim();
+    if (!ho) return;
+    const key = `${dong}|${ho}`;
+    const prev = hoMap.get(key) || {};
+    hoMap.set(key, { ...prev, ...item, dongName: dong, hoName: ho });
+  });
+  const hoInfo = [...hoMap.values()];
+  const dongPurposeMap = {};
+  dongInfo.forEach((item) => {
+    const dong = String(item?.dongName || '').trim();
+    const purpose = String(item?.mainPurpose || '').trim();
+    if (!dong || !purpose || purpose === '-') return;
+    dongPurposeMap[dong] = purpose;
+  });
+  state.buildingDongPurposeMap = dongPurposeMap;
   state.buildingHoFallbackList = Array.isArray(hoInfo) ? [...hoInfo] : [];
   const dongHoNote = registryLinkage?.note || housingPipeline?.note || registry?.reason || '(해당 주소에서 동/호 데이터 미제공)';
   const isVworldSource = String(housingPipeline?.source || '') === 'vworld-apt-price';
@@ -838,11 +872,109 @@ function renderBuildingSearchResult(payload) {
         : '-';
       const badge = getSourceBadgeMeta(item.source || (usesOriginalSource ? 'registry' : 'rtms'));
       const dongName = String(item.dongName || '').trim();
-      return `<button type="button" class="building-simple-item building-dong-item" data-dong-name="${escapeHtml(dongName)}"><div class="building-item-head"><strong>${escapeHtml(item.dongName)}</strong><span class="building-source-chip ${badge.className}">${badge.label}</span></div><br>층 구성: ${escapeHtml(floorRange)} · 레코드 ${escapeHtml(String(item.floorCount))}건</button>`;
+      const mainPurpose = String(item.mainPurpose || '-').trim() || '-';
+      const structure = String(item.structure || '-').trim() || '-';
+      return `<button type="button" class="building-simple-item building-dong-item" data-dong-name="${escapeHtml(dongName)}"><div class="building-item-head"><strong>${escapeHtml(item.dongName)}</strong><span class="building-source-chip ${badge.className}">${badge.label}</span></div><br>층 구성: ${escapeHtml(floorRange)} · 레코드 ${escapeHtml(String(item.floorCount))}건<br>주용도: ${escapeHtml(mainPurpose)} · 구조: ${escapeHtml(structure)}</button>`;
     }).join('')
     : `<p class="hint">동 정보가 없습니다. ${escapeHtml(dongHoNote)}</p>`;
 
   renderBuildingHoList(hoInfo, `호 정보가 없습니다. ${dongHoNote}`);
+
+  const apDongInfo = Array.isArray(registry?.apDongOulnInfo) ? registry.apDongOulnInfo : [];
+  const apHoInfo = Array.isArray(registry?.apExposPubuseAreaInfo) ? registry.apExposPubuseAreaInfo : [];
+  const brDongInfo = Array.isArray(registry?.dongInfo) ? registry.dongInfo : [];
+  const brHoInfo = Array.isArray(registry?.hoInfo) ? registry.hoInfo : [];
+  const useApSource = apDongInfo.length > 0 || apHoInfo.length > 0;
+  const registryDongInfoRaw = useApSource ? apDongInfo : brDongInfo;
+  const registryHoInfoRaw = useApSource ? apHoInfo : brHoInfo;
+  const registryDongInfo = registryDongInfoRaw.length >= dongInfo.length ? registryDongInfoRaw : dongInfo;
+  const registryHoInfo = registryHoInfoRaw.length >= hoInfo.length ? registryHoInfoRaw : hoInfo;
+  const registryUsingSupplement = registryHoInfo !== registryHoInfoRaw || registryDongInfo !== registryDongInfoRaw;
+
+  const apDongRawRows = Array.isArray(registry?.apDongOulnRawRows) ? registry.apDongOulnRawRows : [];
+  const apExposRawRows = Array.isArray(registry?.apExposPubuseAreaRawRows) ? registry.apExposPubuseAreaRawRows : [];
+  const brDongRawRows = Array.isArray(registry?.brFlrOulnRawRows) ? registry.brFlrOulnRawRows : [];
+  const brExposRawRows = Array.isArray(registry?.brExposPubuseAreaRawRows) ? registry.brExposPubuseAreaRawRows : [];
+  const dongRawRows = useApSource ? apDongRawRows : brDongRawRows;
+  const exposRawRows = useApSource ? apExposRawRows : brExposRawRows;
+  const rawSourceLabel = useApSource ? 'Ap API' : 'Br API';
+  if (elements.buildingRegistrySummary) {
+    elements.buildingRegistrySummary.innerHTML = `
+      <span class="building-source-chip source-original">원본: 건축물대장 API (${escapeHtml(rawSourceLabel)})</span>
+      ${registryUsingSupplement ? '<span class="building-source-chip source-fallback">보강 포함</span>' : ''}
+      <span class="building-source-note">동 ${escapeHtml(String(registryDongInfo.length))}건 · 호 ${escapeHtml(String(registryHoInfo.length))}건</span>
+    `;
+  }
+  if (elements.buildingRegistryDongList) {
+    elements.buildingRegistryDongList.innerHTML = registryDongInfo.length
+      ? registryDongInfo.map((item) => {
+        const floorRange = item.minFloor !== null && item.maxFloor !== null
+          ? `${item.minFloor}~${item.maxFloor}층`
+          : '-';
+        const mainPurpose = String(item.mainPurpose || '-').trim() || '-';
+        const structure = String(item.structure || '-').trim() || '-';
+        return `<div class="building-simple-item"><div class="building-item-head"><strong>${escapeHtml(String(item.dongName || '동 미상'))}</strong><span class="building-source-chip source-original">원본</span></div><br>층 구성: ${escapeHtml(floorRange)} · 레코드 ${escapeHtml(String(item.floorCount || 0))}건<br>주용도: ${escapeHtml(mainPurpose)} · 구조: ${escapeHtml(structure)}</div>`;
+      }).join('')
+      : '<p class="hint">건축물대장 API 원본 동 정보가 없습니다.</p>';
+  }
+  if (elements.buildingRegistryHoTable) {
+    const rows = [...registryHoInfo]
+      .filter((item) => String(item?.hoName || '').trim() && String(item?.hoName || '').trim() !== '-')
+      .sort((a, b) => {
+        const dongA = String(a?.dongName || '');
+        const dongB = String(b?.dongName || '');
+        const dongNumA = Number((dongA.match(/\d+/) || [])[0]);
+        const dongNumB = Number((dongB.match(/\d+/) || [])[0]);
+        if (Number.isFinite(dongNumA) && Number.isFinite(dongNumB) && dongNumA !== dongNumB) return dongNumA - dongNumB;
+        const dongCmp = dongA.localeCompare(dongB, 'ko');
+        if (dongCmp !== 0) return dongCmp;
+        const hoA = String(a?.hoName || '');
+        const hoB = String(b?.hoName || '');
+        const hoNumA = Number((hoA.match(/\d+/) || [])[0]);
+        const hoNumB = Number((hoB.match(/\d+/) || [])[0]);
+        if (Number.isFinite(hoNumA) && Number.isFinite(hoNumB) && hoNumA !== hoNumB) return hoNumA - hoNumB;
+        return hoA.localeCompare(hoB, 'ko');
+      });
+
+    elements.buildingRegistryHoTable.innerHTML = rows.length
+      ? rows.slice(0, 2000).map((item) => {
+        const supplySqm = Number(item?.supplyAreaSquareMeter ?? NaN);
+        const exclusiveSqm = Number(item?.exclusiveAreaSquareMeter ?? item?.areaSquareMeter ?? NaN);
+        const dongName = String(item?.dongName || '').trim();
+        const mainPurpose = String(state.buildingDongPurposeMap?.[dongName] || item?.mainPurpose || '-').trim() || '-';
+        return `<tr>
+          <td>${escapeHtml(String(item?.dongName || '-'))}</td>
+          <td>${escapeHtml(String(item?.hoName || '-'))}</td>
+          <td>${escapeHtml(mainPurpose)}</td>
+          <td>${escapeHtml(Number.isFinite(supplySqm) ? supplySqm.toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '-')}</td>
+          <td>${escapeHtml(Number.isFinite(exclusiveSqm) ? exclusiveSqm.toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '-')}</td>
+        </tr>`;
+      }).join('')
+      : '<tr><td colspan="5" class="building-ho-table-empty">건축물대장 API 원본 호 정보가 없습니다.</td></tr>';
+  }
+  if (elements.buildingRegistryNote) {
+    const apDongCount = Number(registry?.debug?.apDongOulnCount || 0);
+    const apExposCount = Number(registry?.debug?.apExposPubuseAreaCount || 0);
+    elements.buildingRegistryNote.textContent = registry?.available
+      ? (registryUsingSupplement
+        ? `건축물대장 원본이 부족해 보강 동호수를 함께 표시합니다. 원본 기준: ${rawSourceLabel} (Ap row: 동 ${apDongCount}건, 전유공용 ${apExposCount}건)`
+        : `이 탭은 건축물대장 API 원본만 사용합니다. 현재 ${rawSourceLabel} 기준 (Ap row: 동 ${apDongCount}건, 전유공용 ${apExposCount}건)`)
+      : `건축물대장 API 조회 불가: ${registry?.reason || '원인 미상'}`;
+  }
+  if (elements.buildingRegistryApDongRaw) {
+    elements.buildingRegistryApDongRaw.innerHTML = dongRawRows.length
+      ? dongRawRows.slice(0, 1000).map((item, idx) => `<div class="building-simple-item">#${idx + 1} · 동 ${escapeHtml(String(item?.dongNm || '-'))} · 호 ${escapeHtml(String(item?.hoNm || '-'))} · 층 ${escapeHtml(String(item?.flrNo ?? '-'))} · 층구분 ${escapeHtml(String(item?.flrGbCdNm || '-'))}</div>`).join('')
+      : '<p class="hint">원본 row 없음</p>';
+  }
+  if (elements.buildingRegistryApExposRaw) {
+    elements.buildingRegistryApExposRaw.innerHTML = exposRawRows.length
+      ? exposRawRows.slice(0, 1000).map((item, idx) => {
+        const area = Number(item?.area);
+        const areaText = Number.isFinite(area) ? area.toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '-';
+        return `<div class="building-simple-item">#${idx + 1} · 동 ${escapeHtml(String(item?.dongNm || '-'))} · 호 ${escapeHtml(String(item?.hoNm || '-'))} · 구분 ${escapeHtml(String(item?.exposPubuseGbCdNm || '-'))} · 주부속 ${escapeHtml(String(item?.mainAtchGbCdNm || '-'))} · 면적 ${escapeHtml(areaText)}㎡</div>`;
+      }).join('')
+      : '<p class="hint">원본 row 없음</p>';
+  }
 
   const bus = transit.bus || {};
   const subway = transit.subway || {};
@@ -999,9 +1131,35 @@ function renderBuildingHoList(items, emptyText) {
   });
 
   if (!uniqueRows.length) {
+    if (elements.buildingHoTable) {
+      elements.buildingHoTable.innerHTML = '<tr><td colspan="5" class="building-ho-table-empty">데이터 없음</td></tr>';
+    }
     elements.buildingHoList.innerHTML = `<p class="hint">${escapeHtml(emptyText || '호 정보가 없습니다.')}</p>`;
     return;
   }
+
+  if (elements.buildingHoTable) {
+    elements.buildingHoTable.innerHTML = uniqueRows.slice(0, 1000).map((item) => {
+      const exclusiveSqm = Number(item.exclusiveAreaSquareMeter ?? item.areaSquareMeter);
+      const supplySqm = Number(item.supplyAreaSquareMeter ?? item.supplyArea ?? NaN);
+      const dongName = String(item?.dongName || '').trim();
+      const mainPurpose = String(state.buildingDongPurposeMap?.[dongName] || item.mainPurpose || '-').trim() || '-';
+      const supplyText = Number.isFinite(supplySqm)
+        ? supplySqm.toLocaleString('ko-KR', { maximumFractionDigits: 2 })
+        : '-';
+      const exclusiveText = Number.isFinite(exclusiveSqm)
+        ? exclusiveSqm.toLocaleString('ko-KR', { maximumFractionDigits: 2 })
+        : '-';
+      return `<tr>
+        <td>${escapeHtml(String(item.dongName || '-'))}</td>
+        <td>${escapeHtml(String(item.hoName || '-'))}</td>
+        <td>${escapeHtml(mainPurpose)}</td>
+        <td>${escapeHtml(supplyText)}</td>
+        <td>${escapeHtml(exclusiveText)}</td>
+      </tr>`;
+    }).join('');
+  }
+
   elements.buildingHoList.innerHTML = uniqueRows.slice(0, 1000).map((item) => {
     const badge = getSourceBadgeMeta(item.source || 'fallback');
     const hasRawSupply = Number.isFinite(Number(item.supplyAreaSquareMeter ?? item.supplyArea));
@@ -1019,7 +1177,9 @@ function renderBuildingHoList(items, emptyText) {
     const supplyText = Number.isFinite(supplySqm)
       ? `공급 ${supplySqm.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}㎡`
       : '공급 -';
-    const suffixParts = [pyeongText, supplyText, exclusiveText].filter(Boolean).join(', ');
+    const dongName = String(item?.dongName || '').trim();
+    const mainPurpose = String(state.buildingDongPurposeMap?.[dongName] || item.mainPurpose || '').trim();
+    const suffixParts = [mainPurpose ? `주용도 ${mainPurpose}` : '', pyeongText, supplyText, exclusiveText].filter(Boolean).join(', ');
     const suffix = suffixParts ? ` (${escapeHtml(suffixParts)})` : '';
     return `<div class="building-simple-item"><div class="building-item-head"><strong>${escapeHtml(item.dongName)} ${escapeHtml(item.hoName)}${suffix}</strong><span class="building-chip-group"><span class="building-source-chip ${badge.className}">${badge.label}</span><span class="building-source-chip ${supplyBadge.sourceClassName}">${escapeHtml(supplyBadge.sourceLabel)}</span><span class="building-source-chip ${supplyBadge.confidenceClassName}">${escapeHtml(supplyBadge.confidenceLabel)}</span></span></div></div>`;
   }).join('');

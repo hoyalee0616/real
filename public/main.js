@@ -243,6 +243,17 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+function mapPurposeToCategory(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw === '-') return '-';
+  return raw;
+}
+
+function toPurposeText(value) {
+  const v = String(value || '').trim();
+  return v && v !== '-' ? v : '';
+}
+
 function getSourceBadgeMeta(source) {
   const token = String(source || '').toLowerCase();
   if (token === 'registry' || token === 'building-registry' || token === 'vworld') {
@@ -839,13 +850,36 @@ function renderBuildingSearchResult(payload) {
     hoMap.set(key, { ...prev, ...item, dongName: dong, hoName: ho });
   });
   const hoInfo = [...hoMap.values()];
+  const apDongInfo = Array.isArray(registry?.apDongOulnInfo) ? registry.apDongOulnInfo : [];
+  const apHoInfo = Array.isArray(registry?.apExposPubuseAreaInfo) ? registry.apExposPubuseAreaInfo : [];
+  const brDongInfo = Array.isArray(registry?.dongInfo) ? registry.dongInfo : [];
+  const brHoInfo = Array.isArray(registry?.hoInfo) ? registry.hoInfo : [];
+  const useApSource = apDongInfo.length > 0 || apHoInfo.length > 0;
+  const registryDongInfoRaw = useApSource ? apDongInfo : brDongInfo;
+  const registryHoInfoRaw = useApSource ? apHoInfo : brHoInfo;
+  const registryDongInfo = registryDongInfoRaw.length >= dongInfo.length ? registryDongInfoRaw : dongInfo;
+  const registryHoInfo = registryHoInfoRaw.length >= hoInfo.length ? registryHoInfoRaw : hoInfo;
+  const registryUsingSupplement = registryHoInfo !== registryHoInfoRaw || registryDongInfo !== registryDongInfoRaw;
+
+  const apDongRawRows = Array.isArray(registry?.apDongOulnRawRows) ? registry.apDongOulnRawRows : [];
+  const apExposRawRows = Array.isArray(registry?.apExposPubuseAreaRawRows) ? registry.apExposPubuseAreaRawRows : [];
+  const brDongRawRows = Array.isArray(registry?.brFlrOulnRawRows) ? registry.brFlrOulnRawRows : [];
+  const brExposRawRows = Array.isArray(registry?.brExposPubuseAreaRawRows) ? registry.brExposPubuseAreaRawRows : [];
+  const dongRawRows = useApSource ? apDongRawRows : brDongRawRows;
+  const exposRawRows = useApSource ? apExposRawRows : brExposRawRows;
+  const rawSourceLabel = useApSource ? 'Ap API' : 'Br API';
+
   const dongPurposeMap = {};
-  dongInfo.forEach((item) => {
-    const dong = String(item?.dongName || '').trim();
-    const purpose = String(item?.mainPurpose || '').trim();
-    if (!dong || !purpose || purpose === '-') return;
-    dongPurposeMap[dong] = purpose;
-  });
+  const pushDongPurpose = (dongName, purpose) => {
+    const dong = String(dongName || '').trim();
+    const p = toPurposeText(purpose);
+    if (!dong || !p) return;
+    if (!Array.isArray(dongPurposeMap[dong])) dongPurposeMap[dong] = [];
+    if (!dongPurposeMap[dong].includes(p)) dongPurposeMap[dong].push(p);
+  };
+  dongInfo.forEach((item) => pushDongPurpose(item?.dongName, item?.mainPurpose));
+  hoInfo.forEach((item) => pushDongPurpose(item?.dongName, item?.mainPurpose));
+  exposRawRows.forEach((row) => pushDongPurpose(row?.dongNm, row?.mainPurpsCdNm));
   state.buildingDongPurposeMap = dongPurposeMap;
   state.buildingHoFallbackList = Array.isArray(hoInfo) ? [...hoInfo] : [];
   const dongHoNote = registryLinkage?.note || housingPipeline?.note || registry?.reason || '(해당 주소에서 동/호 데이터 미제공)';
@@ -872,7 +906,10 @@ function renderBuildingSearchResult(payload) {
         : '-';
       const badge = getSourceBadgeMeta(item.source || (usesOriginalSource ? 'registry' : 'rtms'));
       const dongName = String(item.dongName || '').trim();
-      const mainPurpose = String(item.mainPurpose || '-').trim() || '-';
+      const mainPurposeList = Array.isArray(state.buildingDongPurposeMap?.[dongName]) ? state.buildingDongPurposeMap[dongName] : [];
+      const mainPurpose = mainPurposeList.length
+        ? mainPurposeList.map((v) => mapPurposeToCategory(v)).join(', ')
+        : mapPurposeToCategory(item.mainPurpose);
       const structure = String(item.structure || '-').trim() || '-';
       return `<button type="button" class="building-simple-item building-dong-item" data-dong-name="${escapeHtml(dongName)}"><div class="building-item-head"><strong>${escapeHtml(item.dongName)}</strong><span class="building-source-chip ${badge.className}">${badge.label}</span></div><br>층 구성: ${escapeHtml(floorRange)} · 레코드 ${escapeHtml(String(item.floorCount))}건<br>주용도: ${escapeHtml(mainPurpose)} · 구조: ${escapeHtml(structure)}</button>`;
     }).join('')
@@ -880,24 +917,6 @@ function renderBuildingSearchResult(payload) {
 
   renderBuildingHoList(hoInfo, `호 정보가 없습니다. ${dongHoNote}`);
 
-  const apDongInfo = Array.isArray(registry?.apDongOulnInfo) ? registry.apDongOulnInfo : [];
-  const apHoInfo = Array.isArray(registry?.apExposPubuseAreaInfo) ? registry.apExposPubuseAreaInfo : [];
-  const brDongInfo = Array.isArray(registry?.dongInfo) ? registry.dongInfo : [];
-  const brHoInfo = Array.isArray(registry?.hoInfo) ? registry.hoInfo : [];
-  const useApSource = apDongInfo.length > 0 || apHoInfo.length > 0;
-  const registryDongInfoRaw = useApSource ? apDongInfo : brDongInfo;
-  const registryHoInfoRaw = useApSource ? apHoInfo : brHoInfo;
-  const registryDongInfo = registryDongInfoRaw.length >= dongInfo.length ? registryDongInfoRaw : dongInfo;
-  const registryHoInfo = registryHoInfoRaw.length >= hoInfo.length ? registryHoInfoRaw : hoInfo;
-  const registryUsingSupplement = registryHoInfo !== registryHoInfoRaw || registryDongInfo !== registryDongInfoRaw;
-
-  const apDongRawRows = Array.isArray(registry?.apDongOulnRawRows) ? registry.apDongOulnRawRows : [];
-  const apExposRawRows = Array.isArray(registry?.apExposPubuseAreaRawRows) ? registry.apExposPubuseAreaRawRows : [];
-  const brDongRawRows = Array.isArray(registry?.brFlrOulnRawRows) ? registry.brFlrOulnRawRows : [];
-  const brExposRawRows = Array.isArray(registry?.brExposPubuseAreaRawRows) ? registry.brExposPubuseAreaRawRows : [];
-  const dongRawRows = useApSource ? apDongRawRows : brDongRawRows;
-  const exposRawRows = useApSource ? apExposRawRows : brExposRawRows;
-  const rawSourceLabel = useApSource ? 'Ap API' : 'Br API';
   if (elements.buildingRegistrySummary) {
     elements.buildingRegistrySummary.innerHTML = `
       <span class="building-source-chip source-original">원본: 건축물대장 API (${escapeHtml(rawSourceLabel)})</span>
@@ -911,7 +930,11 @@ function renderBuildingSearchResult(payload) {
         const floorRange = item.minFloor !== null && item.maxFloor !== null
           ? `${item.minFloor}~${item.maxFloor}층`
           : '-';
-        const mainPurpose = String(item.mainPurpose || '-').trim() || '-';
+        const dongName = String(item?.dongName || '').trim();
+        const mainPurposeList = Array.isArray(state.buildingDongPurposeMap?.[dongName]) ? state.buildingDongPurposeMap[dongName] : [];
+        const mainPurpose = mainPurposeList.length
+          ? mainPurposeList.map((v) => mapPurposeToCategory(v)).join(', ')
+          : mapPurposeToCategory(item.mainPurpose);
         const structure = String(item.structure || '-').trim() || '-';
         return `<div class="building-simple-item"><div class="building-item-head"><strong>${escapeHtml(String(item.dongName || '동 미상'))}</strong><span class="building-source-chip source-original">원본</span></div><br>층 구성: ${escapeHtml(floorRange)} · 레코드 ${escapeHtml(String(item.floorCount || 0))}건<br>주용도: ${escapeHtml(mainPurpose)} · 구조: ${escapeHtml(structure)}</div>`;
       }).join('')
@@ -941,7 +964,10 @@ function renderBuildingSearchResult(payload) {
         const supplySqm = Number(item?.supplyAreaSquareMeter ?? NaN);
         const exclusiveSqm = Number(item?.exclusiveAreaSquareMeter ?? item?.areaSquareMeter ?? NaN);
         const dongName = String(item?.dongName || '').trim();
-        const mainPurpose = String(state.buildingDongPurposeMap?.[dongName] || item?.mainPurpose || '-').trim() || '-';
+        const mainPurposeList = Array.isArray(state.buildingDongPurposeMap?.[dongName]) ? state.buildingDongPurposeMap[dongName] : [];
+        const mainPurpose = mainPurposeList.length
+          ? mainPurposeList.map((v) => mapPurposeToCategory(v)).join(', ')
+          : mapPurposeToCategory(item?.mainPurpose || '-');
         return `<tr>
           <td>${escapeHtml(String(item?.dongName || '-'))}</td>
           <td>${escapeHtml(String(item?.hoName || '-'))}</td>
@@ -1143,7 +1169,10 @@ function renderBuildingHoList(items, emptyText) {
       const exclusiveSqm = Number(item.exclusiveAreaSquareMeter ?? item.areaSquareMeter);
       const supplySqm = Number(item.supplyAreaSquareMeter ?? item.supplyArea ?? NaN);
       const dongName = String(item?.dongName || '').trim();
-      const mainPurpose = String(state.buildingDongPurposeMap?.[dongName] || item.mainPurpose || '-').trim() || '-';
+      const mainPurposeList = Array.isArray(state.buildingDongPurposeMap?.[dongName]) ? state.buildingDongPurposeMap[dongName] : [];
+      const mainPurpose = mainPurposeList.length
+        ? mainPurposeList.map((v) => mapPurposeToCategory(v)).join(', ')
+        : mapPurposeToCategory(item.mainPurpose || '-');
       const supplyText = Number.isFinite(supplySqm)
         ? supplySqm.toLocaleString('ko-KR', { maximumFractionDigits: 2 })
         : '-';
@@ -1178,7 +1207,10 @@ function renderBuildingHoList(items, emptyText) {
       ? `공급 ${supplySqm.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}㎡`
       : '공급 -';
     const dongName = String(item?.dongName || '').trim();
-    const mainPurpose = String(state.buildingDongPurposeMap?.[dongName] || item.mainPurpose || '').trim();
+    const mainPurposeList = Array.isArray(state.buildingDongPurposeMap?.[dongName]) ? state.buildingDongPurposeMap[dongName] : [];
+    const mainPurpose = mainPurposeList.length
+      ? mainPurposeList.map((v) => mapPurposeToCategory(v)).join(', ')
+      : mapPurposeToCategory(item.mainPurpose || '');
     const suffixParts = [mainPurpose ? `주용도 ${mainPurpose}` : '', pyeongText, supplyText, exclusiveText].filter(Boolean).join(', ');
     const suffix = suffixParts ? ` (${escapeHtml(suffixParts)})` : '';
     return `<div class="building-simple-item"><div class="building-item-head"><strong>${escapeHtml(item.dongName)} ${escapeHtml(item.hoName)}${suffix}</strong><span class="building-chip-group"><span class="building-source-chip ${badge.className}">${badge.label}</span><span class="building-source-chip ${supplyBadge.sourceClassName}">${escapeHtml(supplyBadge.sourceLabel)}</span><span class="building-source-chip ${supplyBadge.confidenceClassName}">${escapeHtml(supplyBadge.confidenceLabel)}</span></span></div></div>`;

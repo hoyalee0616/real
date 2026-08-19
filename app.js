@@ -66,7 +66,6 @@ const elements = {
   englishInput: document.querySelector("#englishInput"),
   koreanInput: document.querySelector("#koreanInput"),
   pronunciationInput: document.querySelector("#pronunciationInput"),
-  categoryInput: document.querySelector("#categoryInput"),
   imageInput: document.querySelector("#imageInput"),
   imagePreview: document.querySelector("#imagePreview"),
   uploadPlaceholder: document.querySelector("#uploadPlaceholder"),
@@ -399,7 +398,6 @@ function openAddDialog(word = null) {
     elements.englishInput.value = word.english;
     elements.koreanInput.value = word.korean;
     elements.pronunciationInput.value = word.pronunciation || "";
-    elements.categoryInput.value = word.category || "things";
     selectedImage = word.image;
     elements.imagePreview.src = word.image;
     elements.imagePreview.hidden = false;
@@ -443,13 +441,12 @@ async function translateEnglishWord(english, signal) {
 
 function buildImagePrompt(english) {
   return [
-    `exactly one ${english}`,
-    "centered and fully visible",
-    "charming hand-painted gouache children's picture-book illustration",
-    "simple rounded shape for a first-grade English flashcard",
-    "warm cream paper background with a soft peach shadow",
-    "cheerful and instantly recognizable",
-    "no text, letters, labels, numbers, people, logo, watermark, frame, or extra objects",
+    `a single ${english}`,
+    "the entire subject visible and centered with generous empty space",
+    "plain warm cream watercolor paper background filling the whole square canvas edge to edge",
+    "charming hand-painted gouache children's storybook illustration",
+    "natural accurate shape and anatomy, instantly recognizable",
+    "soft small peach shadow directly under the subject",
   ].join(", ");
 }
 
@@ -465,7 +462,8 @@ async function generateCardDetails() {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 75000);
   const seed = Math.floor(Date.now() / 1000) % 1000000;
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(buildImagePrompt(english))}?width=720&height=720&model=flux&seed=${seed}&nologo=true&safe=true`;
+  const negativePrompt = "circle,ring,plate,badge,emblem,border,frame,text,label,letters,numbers,logo,watermark,scenery,props,extra objects,multiple subjects";
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(buildImagePrompt(english))}?width=720&height=720&model=sana&seed=${seed}&nologo=true&nofeed=true&safe=true&negative_prompt=${encodeURIComponent(negativePrompt)}`;
 
   setAiButtonLoading(true);
   elements.formError.textContent = "";
@@ -483,7 +481,7 @@ async function generateCardDetails() {
     })
     .then((blob) => {
       if (!blob.type.startsWith("image/")) throw new Error("Invalid image response");
-      return prepareImage(blob);
+      return prepareImage(blob, { cropEdges: true });
     })
     .then((dataUrl) => {
       selectedImage = dataUrl;
@@ -514,22 +512,25 @@ async function generateCardDetails() {
     : "무료 AI가 잠시 바빠요. 다시 시도하거나 뜻·그림을 직접 입력해 주세요.";
 }
 
-async function prepareImage(file) {
+async function prepareImage(file, { cropEdges = false } = {}) {
   const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
   if (!allowedTypes.includes(file.type)) throw new Error("JPG, PNG, WEBP 그림만 사용할 수 있어요.");
   if (file.size > 12 * 1024 * 1024) throw new Error("그림 파일은 12MB보다 작아야 해요.");
 
   const source = await fileToDataUrl(file);
   const image = await loadImage(source);
+  const crop = cropEdges ? Math.round(Math.min(image.naturalWidth, image.naturalHeight) * 0.025) : 0;
+  const sourceWidth = image.naturalWidth - crop * 2;
+  const sourceHeight = image.naturalHeight - crop * 2;
   const maxSize = 720;
-  const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
+  const scale = Math.min(1, maxSize / Math.max(sourceWidth, sourceHeight));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(image.naturalWidth * scale);
-  canvas.height = Math.round(image.naturalHeight * scale);
+  canvas.width = Math.round(sourceWidth * scale);
+  canvas.height = Math.round(sourceHeight * scale);
   const context = canvas.getContext("2d");
   context.fillStyle = "#fffdf7";
   context.fillRect(0, 0, canvas.width, canvas.height);
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.drawImage(image, crop, crop, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", 0.8);
 }
 
@@ -574,7 +575,8 @@ function saveWord(event) {
   const english = String(form.get("english") || "").trim().toLowerCase();
   const korean = String(form.get("korean") || "").trim();
   const pronunciation = String(form.get("pronunciation") || "").trim();
-  const category = String(form.get("category") || "things");
+  const editingWord = editingWordId ? getAllWords().find((word) => word.id === editingWordId) : null;
+  const category = editingWord?.category || "words";
 
   if (!/^[a-zA-Z][a-zA-Z -]*$/.test(english)) {
     elements.formError.textContent = "영어 단어는 알파벳으로 적어 주세요.";

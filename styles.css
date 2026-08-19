@@ -1345,6 +1345,10 @@ footer span {
   border-color: var(--orange);
 }
 
+.form-grid label:last-child {
+  grid-column: 1 / -1;
+}
+
 .ai-generator {
   margin-top: 18px;
 }
@@ -1722,6 +1726,10 @@ footer span {
   .form-grid {
     grid-template-columns: 1fr;
     gap: 12px;
+  }
+
+  .form-grid label:last-child {
+    grid-column: auto;
   }
 
   .quiz-options {

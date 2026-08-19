@@ -20,7 +20,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradle
 ```
 
 생성된 APK는 `android/app/build/outputs/apk/debug/app-debug.apk`에 저장됩니다.
-현재 모바일/PWA·AI 그림 생성 통합 테스트 APK는 프로젝트 루트의 `KongKong-English-v1.3.apk`입니다.
+현재 모바일/PWA·AI 그림 생성 통합 테스트 APK는 프로젝트 루트의 `KongKong-English-v1.4.apk`입니다.
 
 ## 포함 기능
 
@@ -29,7 +29,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradle
 - 배운 단어 별표 표시와 진도 저장
 - 그림을 보고 답하는 5문제 퀴즈
 - 영어 단어 입력만으로 한글 뜻과 AI 그림 자동 생성
-- 직접 만든 카드의 뜻·읽기·분류·그림 수정 및 삭제
+- 기본 10개와 직접 만든 카드 모두 뜻·읽기·분류·그림 수정 및 삭제
 - 틀린 단어 자동 수집과 오답 퀴즈
 - 날짜별 하루 10단어 추천과 일일 진도
 - 등록순·알파벳순·신규순·오늘 추천 정렬

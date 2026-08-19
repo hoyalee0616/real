@@ -13,6 +13,8 @@ const defaultWords = [
 
 const storageKeys = {
   customWords: "kongkong-custom-words-v1",
+  defaultOverrides: "kongkong-default-overrides-v1",
+  deletedDefaultIds: "kongkong-deleted-default-ids-v1",
   learned: "kongkong-learned-words-v1",
   wrongWords: "kongkong-wrong-words-v1",
   dailyPlans: "kongkong-daily-plans-v1",
@@ -75,6 +77,8 @@ const elements = {
 };
 
 let customWords = readStorage(storageKeys.customWords, []);
+let defaultOverrides = readStorage(storageKeys.defaultOverrides, {});
+let deletedDefaultIds = new Set(readStorage(storageKeys.deletedDefaultIds, []));
 let learnedWords = new Set(readStorage(storageKeys.learned, []));
 let wrongWords = new Set(readStorage(storageKeys.wrongWords, []));
 let dailyPlans = readStorage(storageKeys.dailyPlans, {});
@@ -119,7 +123,16 @@ function writeStorage(key, value) {
 }
 
 function getAllWords() {
-  return [...defaultWords, ...customWords];
+  const builtInWords = defaultWords
+    .filter((word) => !deletedDefaultIds.has(word.id))
+    .map((word) => ({
+      ...word,
+      ...(defaultOverrides[word.id] || {}),
+      id: word.id,
+      custom: false,
+      builtIn: true,
+    }));
+  return [...builtInWords, ...customWords];
 }
 
 function getTodayKey() {
@@ -293,8 +306,8 @@ function updateStudyDialog() {
   elements.studyMeaning.textContent = word.korean;
   elements.studyPronunciation.textContent = word.pronunciation || "천천히 듣고 따라 해요";
   elements.customBadge.hidden = !word.custom;
-  elements.editWordButton.hidden = !word.custom;
-  elements.deleteWordButton.hidden = !word.custom;
+  elements.editWordButton.hidden = false;
+  elements.deleteWordButton.hidden = false;
 
   const isLearned = learnedWords.has(word.id);
   elements.learnButton.classList.toggle("is-learned", isLearned);
@@ -404,7 +417,7 @@ function openAddDialog(word = null) {
 
 function openEditCurrentWord() {
   const word = getCurrentStudyWord();
-  if (!word?.custom) return;
+  if (!word) return;
   elements.studyDialog.close();
   openAddDialog(word);
 }
@@ -581,20 +594,33 @@ function saveWord(event) {
   }
 
   if (editingWordId) {
-    const previous = customWords.find((word) => word.id === editingWordId);
-    const updated = {
-      ...previous,
-      english,
-      korean,
-      pronunciation,
-      category,
-      image: selectedImage,
-      custom: true,
-      updatedAt: Date.now(),
-    };
-    const nextWords = customWords.map((word) => (word.id === editingWordId ? updated : word));
-    if (!writeStorage(storageKeys.customWords, nextWords)) return;
-    customWords = nextWords;
+    const builtIn = defaultWords.some((word) => word.id === editingWordId);
+    if (builtIn) {
+      defaultOverrides[editingWordId] = {
+        english,
+        korean,
+        pronunciation,
+        category,
+        image: selectedImage,
+        updatedAt: Date.now(),
+      };
+      if (!writeStorage(storageKeys.defaultOverrides, defaultOverrides)) return;
+    } else {
+      const previous = customWords.find((word) => word.id === editingWordId);
+      const updated = {
+        ...previous,
+        english,
+        korean,
+        pronunciation,
+        category,
+        image: selectedImage,
+        custom: true,
+        updatedAt: Date.now(),
+      };
+      const nextWords = customWords.map((word) => (word.id === editingWordId ? updated : word));
+      if (!writeStorage(storageKeys.customWords, nextWords)) return;
+      customWords = nextWords;
+    }
     showToast(`“${english}” 카드를 수정했어요!`);
   } else {
     const newWord = {
@@ -622,10 +648,18 @@ function saveWord(event) {
 
 function deleteCurrentWord() {
   const word = getCurrentStudyWord();
-  if (!word?.custom) return;
+  if (!word) return;
   if (!window.confirm(`“${word.english}” 낱말카드를 삭제할까요?`)) return;
 
-  customWords = customWords.filter((item) => item.id !== word.id);
+  if (word.builtIn) {
+    deletedDefaultIds.add(word.id);
+    delete defaultOverrides[word.id];
+    writeStorage(storageKeys.deletedDefaultIds, [...deletedDefaultIds]);
+    writeStorage(storageKeys.defaultOverrides, defaultOverrides);
+  } else {
+    customWords = customWords.filter((item) => item.id !== word.id);
+    writeStorage(storageKeys.customWords, customWords);
+  }
   learnedWords.delete(word.id);
   wrongWords.delete(word.id);
   Object.keys(dailyPlans).forEach((date) => {
@@ -634,7 +668,6 @@ function deleteCurrentWord() {
   Object.keys(dailyCompleted).forEach((date) => {
     dailyCompleted[date] = dailyCompleted[date].filter((id) => id !== word.id);
   });
-  writeStorage(storageKeys.customWords, customWords);
   writeStorage(storageKeys.learned, [...learnedWords]);
   writeStorage(storageKeys.wrongWords, [...wrongWords]);
   writeStorage(storageKeys.dailyPlans, dailyPlans);

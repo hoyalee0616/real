@@ -1920,6 +1920,79 @@ footer span {
     border-radius: 15px;
   }
 
+  .is-android-app .study-modal .modal-frame {
+    padding: 46px 16px 13px;
+  }
+
+  .is-android-app .study-modal .close-button {
+    top: 10px;
+    right: 10px;
+  }
+
+  .is-android-app .study-layout {
+    gap: 8px;
+  }
+
+  .is-android-app .study-image-wrap {
+    width: min(42vw, 170px);
+    margin: 0 auto;
+    border-radius: 17px;
+  }
+
+  .is-android-app .study-kicker {
+    margin-bottom: 0;
+    font-size: 0.68rem;
+  }
+
+  .is-android-app .study-copy h2 {
+    font-size: 2.15rem;
+    line-height: 1;
+  }
+
+  .is-android-app .pronunciation {
+    margin-top: 2px;
+    font-size: 0.78rem;
+  }
+
+  .is-android-app .study-meaning {
+    margin: 4px 0 9px;
+    font-size: 1rem;
+  }
+
+  .is-android-app .speak-button,
+  .is-android-app .learn-button {
+    min-height: 42px;
+    border-radius: 14px;
+    font-size: 0.82rem;
+  }
+
+  .is-android-app .learn-button {
+    margin-top: 6px;
+  }
+
+  .is-android-app .edit-button {
+    min-height: 40px;
+    margin-top: 6px;
+    font-size: 0.72rem;
+  }
+
+  .is-android-app .delete-button {
+    min-height: 40px;
+    margin-top: 3px;
+    padding: 2px;
+    font-size: 0.68rem;
+  }
+
+  .is-android-app .study-navigation {
+    margin-top: 7px;
+    padding-top: 7px;
+  }
+
+  .is-android-app .nav-button {
+    min-height: 40px;
+    font-size: 0.74rem;
+  }
+
   .is-android-app footer {
     padding-top: 22px;
     padding-bottom: 22px;
@@ -1929,6 +2002,20 @@ footer span {
 @media (min-width: 540px) and (max-width: 760px) {
   .is-android-app .card-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 360px) {
+  .is-android-app .study-image-wrap {
+    width: 120px;
+  }
+
+  .is-android-app .study-modal .modal-frame {
+    padding-top: 42px;
+  }
+
+  .is-android-app .study-copy h2 {
+    font-size: 1.95rem;
   }
 }
 

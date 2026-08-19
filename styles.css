@@ -1905,7 +1905,7 @@ footer span {
   }
 
   .is-android-app .daily-start-button {
-    min-height: 36px;
+    min-height: 40px;
     padding-inline: 10px;
     font-size: 0.7rem;
   }

@@ -1,0 +1,6 @@
+android/
+*.apk
+assets/words/*.png
+.git/
+.DS_Store
+node_modules/

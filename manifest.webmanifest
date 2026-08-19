@@ -1,0 +1,28 @@
+{
+  "name": "콩콩 영어 · 나만의 낱말카드",
+  "short_name": "콩콩 영어",
+  "description": "그림을 보고, 듣고, 따라 말하는 초등 1학년 영어 낱말카드",
+  "lang": "ko-KR",
+  "id": "/",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F4FAF6",
+  "theme_color": "#FFF8E9",
+  "categories": ["education", "kids"],
+  "icons": [
+    {
+      "src": "assets/icons/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icons/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

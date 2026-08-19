@@ -1768,7 +1768,7 @@ footer span {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .is-android-app .site-header,
   .is-android-app main {
     width: calc(100% - 32px);
@@ -1803,6 +1803,10 @@ footer span {
     min-height: 0;
     padding: 22px 20px;
     border-radius: 22px;
+  }
+
+  .is-android-app .welcome-sticker {
+    display: none;
   }
 
   .is-android-app .eyebrow {
@@ -1852,7 +1856,7 @@ footer span {
   }
 
   .is-android-app .filter-button {
-    min-height: 34px;
+    min-height: 40px;
     padding: 0 11px;
     font-size: 0.76rem;
   }
@@ -1889,9 +1893,9 @@ footer span {
   }
 
   .is-android-app .daily-strip {
-    width: calc(100% - 32px);
+    width: 100%;
     min-height: 60px;
-    margin: 12px auto 0;
+    margin: 12px 0 0;
     border-radius: 18px;
   }
 
@@ -1919,6 +1923,48 @@ footer span {
   .is-android-app footer {
     padding-top: 22px;
     padding-bottom: 22px;
+  }
+}
+
+@media (min-width: 540px) and (max-width: 760px) {
+  .is-android-app .card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 761px) and (max-width: 900px) {
+  .is-android-app .site-header {
+    padding: 8px 0 10px;
+  }
+
+  .is-android-app .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .is-android-app .welcome {
+    padding: 16px 20px;
+  }
+
+  .is-android-app .welcome h1 {
+    font-size: 1.42rem;
+  }
+
+  .is-android-app .welcome p:last-child {
+    margin-top: 6px;
+  }
+
+  .is-android-app .daily-strip {
+    min-height: 56px;
+    margin-top: 10px;
+  }
+
+  .is-android-app .learning-board {
+    margin-top: 12px;
+  }
+
+  .is-android-app .card-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

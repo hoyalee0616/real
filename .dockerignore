@@ -3,7 +3,9 @@ KongKong-English-v1.0.apk
 KongKong-English-v1.1.apk
 KongKong-English-v1.2.apk
 KongKong-English-v1.3.apk
+KongKong-English-v1.4.apk
 assets/words/*.png
 .git/
 .DS_Store
 node_modules/
+data/

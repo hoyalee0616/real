@@ -40,6 +40,10 @@
           <span class="progress-icon" aria-hidden="true">★</span>
           <span><strong id="learnedCount">0</strong> / <span id="wordCount">10</span> 배웠어요</span>
         </div>
+        <button class="sync-button" id="openSyncButton" type="button" aria-label="데이터 동기화">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.4-8A6 6 0 0 1 18 8.3 4.5 4.5 0 0 1 18.5 17H8"/><path d="m9 14 3 3 3-3M12 17v-7"/></svg>
+          <span class="sync-dot" id="syncDot" aria-hidden="true"></span>
+        </button>
         <button class="button button-primary" id="openAddButton" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           내 단어 추가
@@ -124,7 +128,7 @@
 
     <footer>
       <p>매일 한 단어씩, 천천히 오래 기억해요 <span aria-hidden="true">♥</span></p>
-      <a class="apk-download" id="apkDownload" href="KongKong-English-v1.4.apk" download>
+      <a class="apk-download" id="apkDownload" href="KongKong-English-v1.5.apk" download>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>
         안드로이드 앱 다운로드
       </a>
@@ -201,17 +205,6 @@
           </label>
         </div>
 
-        <div class="ai-generator">
-          <button class="ai-generate-button" id="generateImageButton" type="button">
-            <span class="ai-spark" aria-hidden="true">✦</span>
-            <span>
-              <strong>AI 그림 자동 만들기</strong>
-              <small>영어 단어를 먼저 입력해 주세요</small>
-            </span>
-          </button>
-          <p id="aiImageStatus" role="status" aria-live="polite"></p>
-        </div>
-
         <label class="image-uploader" id="imageUploader">
           <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" />
           <span class="upload-placeholder" id="uploadPlaceholder">
@@ -230,6 +223,52 @@
           <button class="button button-primary" id="formSubmitButton" type="submit">낱말카드 만들기</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog class="modal sync-modal" id="syncDialog" aria-labelledby="syncTitle">
+      <div class="modal-frame">
+        <button class="icon-button close-button" type="button" data-close-dialog aria-label="닫기">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+        <div class="form-heading">
+          <span class="form-icon sync-heading-icon" aria-hidden="true">☁</span>
+          <div>
+            <p>CLOUD SYNC</p>
+            <h2 id="syncTitle">학습 데이터를 연결해요</h2>
+          </div>
+        </div>
+
+        <div class="sync-status-card">
+          <span class="sync-status-icon" id="syncStatusIcon" aria-hidden="true">●</span>
+          <div>
+            <strong id="syncStatusTitle">동기화 준비됨</strong>
+            <small id="syncStatusMessage">온라인일 때 자동으로 저장해요.</small>
+          </div>
+        </div>
+
+        <section class="sync-code-section" aria-labelledby="mySyncCodeLabel">
+          <span id="mySyncCodeLabel">내 동기화 코드</span>
+          <div class="sync-code-row">
+            <code id="syncCodeDisplay">----</code>
+            <button class="button button-quiet" id="copySyncCodeButton" type="button">코드 복사</button>
+          </div>
+          <small>이 코드를 다른 휴대폰이나 웹에 입력하면 같은 카드와 진도를 사용해요.</small>
+        </section>
+
+        <label class="sync-connect-label" for="syncCodeInput">
+          <span>다른 기기의 코드 연결</span>
+          <div class="sync-connect-row">
+            <input id="syncCodeInput" type="text" inputmode="text" maxlength="14" placeholder="12자리 코드" autocomplete="off" autocapitalize="characters" />
+            <button class="button button-primary" id="connectSyncCodeButton" type="button">연결</button>
+          </div>
+        </label>
+        <p class="form-error" id="syncError" role="alert"></p>
+
+        <div class="form-actions sync-actions">
+          <button class="button button-primary" id="syncNowButton" type="button">지금 동기화</button>
+        </div>
+        <p class="sync-privacy">동기화 코드는 비밀번호처럼 보관해 주세요. 코드를 아는 사람은 같은 학습 데이터를 볼 수 있어요.</p>
+      </div>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

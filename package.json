@@ -2,8 +2,11 @@
   "name": "kongkong-english-word-cards",
   "version": "1.0.0",
   "private": true,
-  "description": "초등 1학년을 위한 그림 영어 낱말카드",
+  "description": "초등 1학년을 위한 동기화 그림 영어 낱말카드",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "start": "python3 -m http.server 4173"
+    "start": "node server.js"
   }
 }

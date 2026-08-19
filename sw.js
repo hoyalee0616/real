@@ -1,4 +1,4 @@
-const CACHE_NAME = "kongkong-english-v8";
+const CACHE_NAME = "kongkong-english-v11";
 const APP_SHELL = [
   "./",
   "./index.html",

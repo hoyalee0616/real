@@ -65,6 +65,18 @@
         </div>
       </section>
 
+      <section class="daily-strip" aria-label="오늘의 학습 목표">
+        <div class="daily-copy">
+          <span class="daily-calendar" aria-hidden="true">10</span>
+          <span>
+            <small>오늘의 추천 학습</small>
+            <strong id="dailyGoalText">10단어 중 0개 완료</strong>
+          </span>
+        </div>
+        <div class="daily-progress-track" aria-hidden="true"><span id="dailyProgressBar"></span></div>
+        <button class="daily-start-button" id="startDailyButton" type="button">오늘의 10개 보기</button>
+      </section>
+
       <section class="learning-board" aria-label="영어 낱말 학습">
         <div class="board-toolbar">
           <div class="mode-switch" role="tablist" aria-label="학습 방법">
@@ -76,13 +88,17 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 9a3 3 0 1 1 5.6 1.5c-.8 1.1-2.8 1.4-2.8 3M12 17.5h.01"/><circle cx="12" cy="12" r="9"/></svg>
               그림 퀴즈
             </button>
+            <button class="mode-button" id="reviewTab" type="button" role="tab" aria-selected="false" aria-controls="reviewPanel">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/><path d="m16 16 1.5 1.5L21 14"/></svg>
+              오답 <span class="wrong-count" id="wrongCount">0</span>
+            </button>
           </div>
 
-          <div class="category-filter" id="categoryFilter" aria-label="단어 종류">
-            <button class="filter-button is-active" type="button" data-category="all">모두</button>
-            <button class="filter-button" type="button" data-category="animals">동물</button>
-            <button class="filter-button" type="button" data-category="nature">자연</button>
-            <button class="filter-button" type="button" data-category="things">물건</button>
+          <div class="category-filter" id="categoryFilter" aria-label="단어 정렬">
+            <button class="filter-button is-active" type="button" data-category="oldest">등록순</button>
+            <button class="filter-button" type="button" data-category="alphabetical">알파벳순</button>
+            <button class="filter-button" type="button" data-category="newest">신규순</button>
+            <button class="filter-button" type="button" data-category="daily">오늘 10개</button>
           </div>
         </div>
 
@@ -99,12 +115,16 @@
         <div id="quizPanel" role="tabpanel" aria-labelledby="quizTab" hidden>
           <div class="quiz-shell" id="quizShell"></div>
         </div>
+
+        <div id="reviewPanel" role="tabpanel" aria-labelledby="reviewTab" hidden>
+          <div class="quiz-shell" id="reviewShell"></div>
+        </div>
       </section>
     </main>
 
     <footer>
       <p>매일 한 단어씩, 천천히 오래 기억해요 <span aria-hidden="true">♥</span></p>
-      <a class="apk-download" id="apkDownload" href="KongKong-English-v1.1.apk" download>
+      <a class="apk-download" id="apkDownload" href="KongKong-English-v1.3.apk" download>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>
         안드로이드 앱 다운로드
       </a>
@@ -135,6 +155,7 @@
               <span aria-hidden="true">☆</span>
               이 단어 배웠어요
             </button>
+            <button class="edit-button" id="editWordButton" type="button" hidden>이 단어 수정하기</button>
             <button class="delete-button" id="deleteWordButton" type="button" hidden>이 단어 삭제하기</button>
           </div>
         </div>
@@ -160,7 +181,7 @@
         <div class="form-heading">
           <span class="form-icon" aria-hidden="true">✎</span>
           <div>
-            <p>MY WORD CARD</p>
+            <p id="formModeLabel">MY WORD CARD</p>
             <h2 id="addTitle">새 단어를 등록해요</h2>
           </div>
         </div>
@@ -188,8 +209,19 @@
           </label>
         </div>
 
+        <div class="ai-generator">
+          <button class="ai-generate-button" id="generateImageButton" type="button">
+            <span class="ai-spark" aria-hidden="true">✦</span>
+            <span>
+              <strong>AI 그림 자동 만들기</strong>
+              <small>영어 단어를 먼저 입력해 주세요</small>
+            </span>
+          </button>
+          <p id="aiImageStatus" role="status" aria-live="polite"></p>
+        </div>
+
         <label class="image-uploader" id="imageUploader">
-          <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" required />
+          <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" />
           <span class="upload-placeholder" id="uploadPlaceholder">
             <span class="upload-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 13v6h14v-6"/></svg>
@@ -203,7 +235,7 @@
 
         <div class="form-actions">
           <button class="button button-quiet" type="button" data-close-dialog>취소</button>
-          <button class="button button-primary" type="submit">낱말카드 만들기</button>
+          <button class="button button-primary" id="formSubmitButton" type="submit">낱말카드 만들기</button>
         </div>
       </form>
     </dialog>

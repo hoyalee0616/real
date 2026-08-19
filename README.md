@@ -20,7 +20,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradle
 ```
 
 생성된 APK는 `android/app/build/outputs/apk/debug/app-debug.apk`에 저장됩니다.
-현재 모바일/PWA 통합 테스트 APK는 프로젝트 루트의 `KongKong-English-v1.1.apk`입니다.
+현재 모바일/PWA·AI 그림 생성 통합 테스트 APK는 프로젝트 루트의 `KongKong-English-v1.3.apk`입니다.
 
 ## 포함 기능
 

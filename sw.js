@@ -1,4 +1,4 @@
-const CACHE_NAME = "kongkong-english-v2";
+const CACHE_NAME = "kongkong-english-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -35,6 +35,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  if (new URL(event.request.url).origin !== self.location.origin) return;
 
   if (event.request.mode === "navigate") {
     event.respondWith(

@@ -379,6 +379,82 @@ main {
   font-size: 2.2rem;
 }
 
+.daily-strip {
+  min-height: 68px;
+  margin-top: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  display: grid;
+  grid-template-columns: auto minmax(90px, 1fr) auto;
+  align-items: center;
+  gap: 15px;
+  background: rgba(255, 253, 247, 0.95);
+  box-shadow: var(--soft-shadow);
+}
+
+.daily-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.daily-copy small,
+.daily-copy strong {
+  display: block;
+}
+
+.daily-copy small {
+  color: var(--muted);
+  font-size: 0.67rem;
+  font-weight: 800;
+}
+
+.daily-copy strong {
+  font-size: 0.87rem;
+}
+
+.daily-calendar {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--orange);
+  font-size: 0.84rem;
+  font-weight: 900;
+  box-shadow: 0 6px 13px rgba(231, 119, 34, 0.17);
+}
+
+.daily-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--mint-100);
+}
+
+.daily-progress-track span {
+  width: 0;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: var(--mint-500);
+  transition: width 220ms ease;
+}
+
+.daily-start-button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 13px;
+  color: var(--mint-700);
+  background: var(--mint-100);
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .learning-board {
   margin-top: 21px;
   padding: 25px 28px 33px;
@@ -438,6 +514,18 @@ main {
   box-shadow: 0 4px 12px rgba(51, 91, 74, 0.1);
 }
 
+.wrong-count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--orange);
+  font-size: 0.65rem;
+}
+
 .category-filter {
   gap: 4px;
 }
@@ -491,6 +579,7 @@ main {
 
 .card-image {
   aspect-ratio: 1.12;
+  display: block;
   overflow: hidden;
   position: relative;
   background: var(--cream);
@@ -625,6 +714,71 @@ main {
 
 .quiz-shell {
   min-height: 470px;
+}
+
+.review-intro {
+  padding: 20px 0 8px;
+}
+
+.review-heading {
+  margin-bottom: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.review-heading h2,
+.review-heading p {
+  margin: 0;
+}
+
+.review-heading h2 {
+  font-size: 1.35rem;
+  letter-spacing: -0.04em;
+}
+
+.review-heading p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.review-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.review-word {
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-align: center;
+  background: #fff;
+}
+
+.review-word img {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 11px;
+  display: block;
+  object-fit: cover;
+}
+
+.review-word strong,
+.review-word small {
+  display: block;
+}
+
+.review-word strong {
+  margin-top: 7px;
+  font-size: 0.9rem;
+}
+
+.review-word small {
+  color: var(--muted);
+  font-size: 0.68rem;
 }
 
 .quiz-intro,
@@ -1030,6 +1184,7 @@ footer span {
   background: var(--mint-100);
 }
 
+.edit-button,
 .delete-button {
   width: 100%;
   margin-top: 12px;
@@ -1042,6 +1197,23 @@ footer span {
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
+}
+
+.edit-button {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  color: var(--mint-700);
+  background: #fff;
+  text-decoration: none;
+}
+
+.delete-button {
+  border: 0;
+  color: #ad6262;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .study-navigation {
@@ -1171,6 +1343,72 @@ footer span {
 .form-grid input:focus,
 .form-grid select:focus {
   border-color: var(--orange);
+}
+
+.ai-generator {
+  margin-top: 18px;
+}
+
+.ai-generate-button {
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 15px;
+  border: 1px solid #f0d49b;
+  border-radius: 17px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  color: var(--ink);
+  background: linear-gradient(110deg, #fff7df, #fffdf7);
+  cursor: pointer;
+  box-shadow: 0 7px 18px rgba(193, 129, 27, 0.08);
+}
+
+.ai-generate-button:hover:not(:disabled) {
+  border-color: var(--orange);
+  transform: translateY(-1px);
+}
+
+.ai-generate-button:disabled {
+  opacity: 0.68;
+  cursor: wait;
+}
+
+.ai-generate-button strong,
+.ai-generate-button small {
+  display: block;
+}
+
+.ai-generate-button strong {
+  font-size: 0.86rem;
+}
+
+.ai-generate-button small {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.ai-spark {
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--orange);
+  font-size: 1.15rem;
+  flex: 0 0 auto;
+}
+
+#aiImageStatus {
+  min-height: 18px;
+  margin: 5px 4px -9px;
+  color: var(--mint-700);
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .image-uploader {
@@ -1356,6 +1594,34 @@ footer span {
   .mode-button {
     flex: 1;
     justify-content: center;
+    gap: 5px;
+    padding-inline: 9px;
+    font-size: 0.82rem;
+  }
+
+  .mode-button svg {
+    width: 17px;
+  }
+
+  .daily-strip {
+    grid-template-columns: 1fr auto;
+    gap: 9px 12px;
+    padding: 10px 12px;
+  }
+
+  .daily-progress-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .review-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .review-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
   }
 
   .category-filter {
@@ -1499,6 +1765,160 @@ footer span {
   .brand-mark {
     width: 38px;
     height: 38px;
+  }
+}
+
+@media (max-width: 760px) {
+  .is-android-app .site-header,
+  .is-android-app main {
+    width: calc(100% - 32px);
+  }
+
+  .is-android-app .site-header {
+    padding: 12px 0 14px;
+    align-items: center;
+  }
+
+  .is-android-app .brand {
+    gap: 8px;
+  }
+
+  .is-android-app .brand-mark {
+    width: 36px;
+    height: 36px;
+  }
+
+  .is-android-app .brand strong {
+    font-size: 1rem;
+  }
+
+  .is-android-app #openAddButton {
+    min-height: 40px;
+    padding: 0 13px;
+    border-radius: 13px;
+    font-size: 0.82rem;
+  }
+
+  .is-android-app .welcome {
+    min-height: 0;
+    padding: 22px 20px;
+    border-radius: 22px;
+  }
+
+  .is-android-app .eyebrow {
+    margin-bottom: 6px;
+    font-size: 0.7rem;
+  }
+
+  .is-android-app .welcome h1 {
+    font-size: 1.62rem;
+    line-height: 1.18;
+    letter-spacing: -0.06em;
+  }
+
+  .is-android-app .welcome p:last-child {
+    margin-top: 10px;
+    font-size: 0.77rem;
+  }
+
+  .is-android-app .learning-board {
+    margin-top: 16px;
+    padding: 14px 12px 20px;
+    border-radius: 22px;
+  }
+
+  .is-android-app .board-toolbar {
+    margin-bottom: 16px;
+    gap: 10px;
+  }
+
+  .is-android-app .mode-switch {
+    padding: 4px;
+    border-radius: 15px;
+  }
+
+  .is-android-app .mode-button {
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 0.86rem;
+  }
+
+  .is-android-app .mode-button svg {
+    display: none;
+  }
+
+  .is-android-app .category-filter {
+    gap: 2px;
+  }
+
+  .is-android-app .filter-button {
+    min-height: 34px;
+    padding: 0 11px;
+    font-size: 0.76rem;
+  }
+
+  .is-android-app .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .is-android-app .card-image {
+    aspect-ratio: 1 / 1;
+  }
+
+  .is-android-app .word-card {
+    border-radius: 16px;
+  }
+
+  .is-android-app .card-copy {
+    min-height: 62px;
+    padding: 10px 11px 11px;
+  }
+
+  .is-android-app .card-copy strong {
+    font-size: 1rem;
+  }
+
+  .is-android-app .card-copy small {
+    font-size: 0.7rem;
+  }
+
+  .is-android-app .mini-speaker {
+    width: 30px;
+    height: 30px;
+  }
+
+  .is-android-app .daily-strip {
+    width: calc(100% - 32px);
+    min-height: 60px;
+    margin: 12px auto 0;
+    border-radius: 18px;
+  }
+
+  .is-android-app .daily-calendar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .is-android-app .daily-start-button {
+    min-height: 36px;
+    padding-inline: 10px;
+    font-size: 0.7rem;
+  }
+
+  .is-android-app .ai-generator,
+  .is-android-app .image-uploader {
+    margin-top: 14px;
+  }
+
+  .is-android-app .ai-generate-button {
+    min-height: 58px;
+    border-radius: 15px;
+  }
+
+  .is-android-app footer {
+    padding-top: 22px;
+    padding-bottom: 22px;
   }
 }
 

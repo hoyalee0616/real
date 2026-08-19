@@ -5,12 +5,15 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -21,6 +24,7 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
+import android.window.OnBackInvokedDispatcher;
 
 import java.util.Locale;
 
@@ -42,6 +46,12 @@ public class MainActivity extends Activity {
         createContentView();
         configureTextToSpeech();
         configureWebView(savedInstanceState);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    this::handleBackNavigation
+            );
+        }
     }
 
     private void configureSystemBars() {
@@ -69,6 +79,33 @@ public class MainActivity extends Activity {
         root.addView(progressBar, progressParams);
 
         setContentView(root);
+        applySystemBarInsets(root);
+    }
+
+    private void applySystemBarInsets(View root) {
+        root.setOnApplyWindowInsetsListener((view, windowInsets) -> {
+            int left;
+            int top;
+            int right;
+            int bottom;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Insets systemBars = windowInsets.getInsets(WindowInsets.Type.systemBars());
+                left = systemBars.left;
+                top = systemBars.top;
+                right = systemBars.right;
+                bottom = systemBars.bottom;
+            } else {
+                left = windowInsets.getSystemWindowInsetLeft();
+                top = windowInsets.getSystemWindowInsetTop();
+                right = windowInsets.getSystemWindowInsetRight();
+                bottom = windowInsets.getSystemWindowInsetBottom();
+            }
+
+            view.setPadding(left, top, right, bottom);
+            return windowInsets;
+        });
+        root.post(root::requestApplyInsets);
     }
 
     private void configureTextToSpeech() {
@@ -196,7 +233,13 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    @SuppressLint("GestureBackNavigation")
+    @SuppressWarnings("deprecation")
     public void onBackPressed() {
+        handleBackNavigation();
+    }
+
+    private void handleBackNavigation() {
         webView.evaluateJavascript(
                 "window.handleAndroidBack ? window.handleAndroidBack() : false",
                 handled -> {
@@ -206,7 +249,7 @@ public class MainActivity extends Activity {
                     if (webView.canGoBack()) {
                         webView.goBack();
                     } else {
-                        MainActivity.super.onBackPressed();
+                        finish();
                     }
                 }
         );

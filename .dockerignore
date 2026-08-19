@@ -1,5 +1,7 @@
 android/
-*.apk
+KongKong-English-v1.0.apk
+KongKong-English-v1.1.apk
+KongKong-English-v1.2.apk
 assets/words/*.png
 .git/
 .DS_Store
